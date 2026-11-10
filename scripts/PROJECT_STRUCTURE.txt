@@ -1,0 +1,8 @@
+Mavora/
+  apps/
+    mobile/       Expo React Native Android/iOS client
+    web/          React + Vite web client
+    api/          Express backend
+  supabase/
+    migrations/   PostgreSQL schema and RLS policies
+  docs/           Product, architecture, founder contact and release checklist

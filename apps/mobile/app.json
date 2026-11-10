@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Mavora",
+    "slug": "mavora-social",
+    "scheme": "mavora",
+    "version": "0.2.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.xontopglobal.mavora"
+    },
+    "android": {
+      "package": "com.xontopglobal.mavora",
+      "versionCode": 2
+    },
+    "plugins": [
+      "expo-asset"
+    ]
+  }
+}
