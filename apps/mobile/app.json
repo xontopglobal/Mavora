@@ -15,6 +15,12 @@
     },
     "plugins": [
       "expo-asset"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "62d38736-47cf-4db1-8628-d93be59ea32a"
+      }
+    },
+    "owner": "xontopglobal"
   }
 }
