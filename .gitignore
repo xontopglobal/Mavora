@@ -1,0 +1,26 @@
+﻿# Environment variables and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Expo
+.expo/
+**/.expo/
+dist/
+web-build/
+
+# Temporary and backup files
+*.sdk52-backup.json
+expo-error.txt
+
+# Operating system and editor
+.DS_Store
+Thumbs.db
+.vscode/

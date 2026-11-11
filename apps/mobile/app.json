@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Mavora",
+    "slug": "mavora-social",
+    "scheme": "mavora",
+    "version": "0.2.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.xontopglobal.mavora"
+    },
+    "android": {
+      "package": "com.xontopglobal.mavora",
+      "versionCode": 2
+    },
+    "plugins": [
+      "expo-asset"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "62d38736-47cf-4db1-8628-d93be59ea32a"
+      }
+    },
+    "owner": "xontopglobal"
+  }
+}

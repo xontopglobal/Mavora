@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mavora — Visual Directions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root{font-family:"DM Sans",sans-serif;color:#f5f4fb;background:#101018;font-synthesis:none;text-rendering:optimizeLegibility}
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(115deg,#17151e 0%,#101018 50%,#16171c 100%);min-height:100vh}
+    .page{max-width:1460px;margin:auto;padding:54px 34px 62px}
+    .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#a8a6b8;font-weight:700}
+    h1{font:600 clamp(34px,5vw,62px)/1.02 "Manrope",sans-serif;letter-spacing:0;margin:17px 0 14px;max-width:780px}
+    .intro{color:#aaa8b6;font-size:15px;line-height:1.7;max-width:680px;margin:0}
+    .directions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:42px}
+    .direction{min-width:0;border:1px solid #ffffff20;background:#ffffff06;padding:14px;border-radius:8px;animation:arrive .65s both}
+    .direction:nth-child(2){animation-delay:.1s}.direction:nth-child(3){animation-delay:.2s}
+    .label{display:flex;justify-content:space-between;align-items:center;padding:5px 3px 14px;gap:12px}
+    .label h2{font:700 19px "Manrope",sans-serif;margin:0;letter-spacing:0}
+    .label p{margin:4px 0 0;color:#a6a4b3;font-size:12px}
+    .choice{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#d9c6ff;border:1px solid #9671df70;padding:7px 9px;border-radius:20px;white-space:nowrap}
+    .device{height:660px;border-radius:7px;overflow:hidden;position:relative;display:flex;flex-direction:column}
+    .device.aurora{--bg:#0d1220;--surface:#141b2a;--surface2:#1a2535;--text:#f4f6ff;--muted:#9ba8bb;--accent:#a88bff;--accent2:#56e3d1;--line:#ffffff16;background:var(--bg);color:var(--text);font-family:"Manrope",sans-serif}
+    .device.solstice{--bg:#f4f0e7;--surface:#fffcf6;--surface2:#e8e2d6;--text:#20251f;--muted:#70766c;--accent:#315dde;--accent2:#d5a74e;--line:#272b2220;background:var(--bg);color:var(--text);font-family:"DM Sans",sans-serif}
+    .device.current{--bg:#e9f1ea;--surface:#f9fff8;--surface2:#d8e5da;--text:#152a24;--muted:#62746b;--accent:#db4f2e;--accent2:#aec83e;--line:#152a2420;background:var(--bg);color:var(--text);font-family:"Space Grotesk",sans-serif}
+    .device-top{height:39px;padding:12px 17px 0;display:flex;justify-content:space-between;font-size:10px;color:var(--muted);font-weight:600;flex-shrink:0}
+    .mast{padding:10px 17px 13px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+    .brand{font-weight:800;letter-spacing:1.8px;font-size:17px}.brand i{font-style:normal;color:var(--accent)}
+    .tools{display:flex;gap:8px}.tool{height:29px;min-width:29px;border:1px solid var(--line);border-radius:50%;display:grid;place-items:center;font-size:12px;color:var(--text)}
+    .feed{padding:12px 13px 10px;overflow:hidden;flex:1}
+    .story-row{display:flex;gap:12px;overflow:hidden;padding:0 2px 13px;border-bottom:1px solid var(--line)}
+    .story{width:53px;flex:0 0 53px;text-align:center;font-size:9px;color:var(--muted)}
+    .avatar{width:43px;height:43px;border-radius:50%;padding:2px;margin:0 auto 4px;background:conic-gradient(var(--accent),var(--accent2),var(--accent))}
+    .avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover;border:2px solid var(--bg)}
+    .story:first-child .avatar{display:grid;place-items:center;color:var(--accent);font-size:20px;background:var(--surface2)}
+    .story:first-child .avatar span{border:1px solid var(--accent);width:100%;height:100%;display:grid;place-items:center;border-radius:50%}
+    .post{padding:14px 1px 12px;border-bottom:1px solid var(--line)}
+    .post-head{display:flex;align-items:center;gap:8px}
+    .post-head img{width:31px;height:31px;object-fit:cover;border-radius:50%}
+    .author{font-size:11px;font-weight:700}.meta{font-size:9px;color:var(--muted);margin-top:2px}
+    .follow{margin-left:auto;color:var(--accent);font-weight:700;font-size:10px}
+    .copy{font-size:11px;line-height:1.5;margin:10px 2px 9px}
+    .photo{height:208px;position:relative;overflow:hidden;border-radius:4px;background:#233}
+    .photo img{width:100%;height:100%;object-fit:cover}
+    .photo-caption{position:absolute;inset:auto 0 0;padding:24px 12px 10px;color:white;font-size:10px;font-weight:600;background:linear-gradient(transparent,#0009)}
+    .post-actions{display:flex;align-items:center;gap:14px;padding-top:10px;font-size:10px;color:var(--muted)}
+    .post-actions strong{color:var(--text);font-weight:600}.save{margin-left:auto}
+    .nav{height:62px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-around;flex-shrink:0;padding:0 10px;background:var(--surface)}
+    .navitem{text-align:center;color:var(--muted);font-size:8px;line-height:1.5;min-width:42px}
+    .navitem b{display:block;color:var(--text);font-size:16px;line-height:1.2;font-weight:500}
+    .aurora .nav{margin:0 11px 9px;border:1px solid var(--line);height:54px;border-radius:6px;box-shadow:0 0 28px #9671df14}
+    .aurora .navitem.active b{color:var(--accent2)}
+    .aurora .photo{border-radius:7px;box-shadow:0 0 0 1px #ffffff18}
+    .solstice .mast{border-bottom:0}.solstice .brand{font-family:"Playfair Display",serif;font-size:20px;letter-spacing:0}
+    .solstice .story-row{border:0}.solstice .avatar{background:var(--accent2)}.solstice .post{background:var(--surface);padding:13px;border-radius:5px;border:1px solid var(--line);margin:2px 0}
+    .solstice .photo{border-radius:2px}.solstice .nav{background:var(--bg);height:66px}
+    .solstice .navitem.active b{color:var(--accent)}
+    .current .mast{border-bottom:2px solid var(--text)}.current .brand{font-size:15px;letter-spacing:2.5px}
+    .current .story-row{gap:9px}.current .avatar{border-radius:14px;padding:2px;background:var(--accent)}.current .avatar img{border-radius:12px}
+    .current .post{border-bottom:2px solid var(--text)}.current .photo{border-radius:0;height:195px}
+    .current .nav{height:66px;background:var(--text);color:#e9f1ea;border:0}
+    .current .navitem,.current .navitem b{color:#c6d6c9}.current .navitem.active b{color:#d6ed69}
+    .notes{display:flex;gap:8px;flex-wrap:wrap;margin:15px 3px 0}
+    .notes span{font-size:10px;color:#c5c2d0;border:1px solid #ffffff1a;padding:6px 8px;border-radius:20px}
+    .notes strong{color:#fff;font-weight:600}
+    footer{margin-top:30px;color:#777584;font-size:11px}
+    @keyframes arrive{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+    @media(max-width:980px){.directions{grid-template-columns:1fr}.page{max-width:590px;padding:32px 18px}.direction{padding:12px}.device{height:680px}.intro{font-size:14px}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="eyebrow">Mavora / Visual exploration / 01</div>
+    <h1>Three ways Mavora<br />could feel.</h1>
+    <p class="intro">One original social experience, expressed through three visual worlds. Aurora is the preferred direction for the Android-first build: atmospheric, clear in low light, and anchored by a luminous violet-to-teal identity.</p>
+    <section class="directions" aria-label="Mavora visual design directions">
+      <article class="direction">
+        <div class="label"><div><h2>01 / Aurora</h2><p>Nocturnal signal, human warmth</p></div><span class="choice">Preferred</span></div>
+        <div class="device aurora">
+          <div class="device-top"><span>9:41</span><span>◉ ◉ 100%</span></div>
+          <div class="mast"><div class="brand">MAV<i>O</i>RA</div><div class="tools"><span class="tool">⌕</span><span class="tool">◌</span></div></div>
+          <div class="feed">
+            <div class="story-row">
+              <div class="story"><div class="avatar"><span>+</span></div>Your story</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Ada</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Malik</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Nia</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Emeka</div>
+            </div>
+            <div class="post">
+              <div class="post-head"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces" alt="" /><div><div class="author">Ada Okafor <span style="color:var(--accent2)">✦</span></div><div class="meta">Lagos · 18 min ago</div></div><span class="follow">Following</span></div>
+              <p class="copy">Found a little quiet between the city and the sea. Keeping this one. <span style="color:var(--accent)">#weekendnotes</span></p>
+              <div class="photo"><img src="https://images.unsplash.com/photo-1473116763249-2faaef81ccda?w=760&h=540&fit=crop" alt="Coastal path beside the sea" /><span class="photo-caption">Somewhere on the coast · 2 photos</span></div>
+              <div class="post-actions"><strong>♡ 284</strong><span>◯ 32 replies</span><span>↗ Share</span><span class="save">◇</span></div>
+            </div>
+          </div>
+          <nav class="nav"><div class="navitem active"><b>⌂</b>For you</div><div class="navitem"><b>◉</b>Circles</div><div class="navitem"><b>＋</b>Create</div><div class="navitem"><b>✉</b>Inbox</div><div class="navitem"><b>◍</b>You</div></nav>
+        </div>
+        <div class="notes"><span><strong>Palette</strong> navy / violet / teal</span><span><strong>Type</strong> Manrope</span><span><strong>Navigation</strong> signal dock</span></div>
+      </article>
+      <article class="direction">
+        <div class="label"><div><h2>02 / Solstice</h2><p>Sun-washed, tactile, generous</p></div><span class="choice" style="color:#e6c46e;border-color:#e6c46e70">Alternate</span></div>
+        <div class="device solstice">
+          <div class="device-top"><span>9:41</span><span>◉ ◉ 100%</span></div>
+          <div class="mast"><div class="brand">Mavora</div><div class="tools"><span class="tool">⌕</span><span class="tool">◌</span></div></div>
+          <div class="feed">
+            <div class="story-row">
+              <div class="story"><div class="avatar"><span>+</span></div>Your story</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Ada</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Malik</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Nia</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Emeka</div>
+            </div>
+            <div class="post">
+              <div class="post-head"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces" alt="" /><div><div class="author">Ada Okafor <span style="color:var(--accent2)">✦</span></div><div class="meta">Lagos · 18 min ago</div></div><span class="follow">Following</span></div>
+              <p class="copy">Found a little quiet between the city and the sea. Keeping this one. <span style="color:var(--accent)">#weekendnotes</span></p>
+              <div class="photo"><img src="https://images.unsplash.com/photo-1473116763249-2faaef81ccda?w=760&h=540&fit=crop" alt="Coastal path beside the sea" /><span class="photo-caption">Somewhere on the coast · 2 photos</span></div>
+              <div class="post-actions"><strong>♡ 284</strong><span>◯ 32 replies</span><span>↗ Share</span><span class="save">◇</span></div>
+            </div>
+          </div>
+          <nav class="nav"><div class="navitem active"><b>⌂</b>Home</div><div class="navitem"><b>◷</b>Explore</div><div class="navitem"><b>＋</b>Make</div><div class="navitem"><b>✉</b>Notes</div><div class="navitem"><b>◍</b>Profile</div></nav>
+        </div>
+        <div class="notes"><span><strong>Palette</strong> chalk / cobalt / ochre</span><span><strong>Type</strong> Playfair + DM Sans</span><span><strong>Navigation</strong> sunlit tabs</span></div>
+      </article>
+      <article class="direction">
+        <div class="label"><div><h2>03 / Current</h2><p>Open, kinetic, community-led</p></div><span class="choice" style="color:#d8ec81;border-color:#d8ec8170">Alternate</span></div>
+        <div class="device current">
+          <div class="device-top"><span>9:41</span><span>◉ ◉ 100%</span></div>
+          <div class="mast"><div class="brand">MAVORA / SOCIAL</div><div class="tools"><span class="tool">⌕</span><span class="tool">◌</span></div></div>
+          <div class="feed">
+            <div class="story-row">
+              <div class="story"><div class="avatar"><span>+</span></div>Your story</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Ada</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Malik</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Nia</div>
+              <div class="story"><div class="avatar"><img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&h=100&fit=crop&crop=faces" alt="" /></div>Emeka</div>
+            </div>
+            <div class="post">
+              <div class="post-head"><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces" alt="" /><div><div class="author">Ada Okafor <span style="color:var(--accent2)">✦</span></div><div class="meta">Lagos · 18 min ago</div></div><span class="follow">Following</span></div>
+              <p class="copy">Found a little quiet between the city and the sea. Keeping this one. <span style="color:var(--accent)">#weekendnotes</span></p>
+              <div class="photo"><img src="https://images.unsplash.com/photo-1473116763249-2faaef81ccda?w=760&h=540&fit=crop" alt="Coastal path beside the sea" /><span class="photo-caption">Somewhere on the coast · 2 photos</span></div>
+              <div class="post-actions"><strong>♡ 284</strong><span>◯ 32 replies</span><span>↗ Share</span><span class="save">◇</span></div>
+            </div>
+          </div>
+          <nav class="nav"><div class="navitem active"><b>⌂</b>Feed</div><div class="navitem"><b>↗</b>Find</div><div class="navitem"><b>＋</b>Post</div><div class="navitem"><b>✉</b>Chat</div><div class="navitem"><b>◍</b>Me</div></nav>
+        </div>
+        <div class="notes"><span><strong>Palette</strong> leaf / ink / signal red</span><span><strong>Type</strong> Space Grotesk</span><span><strong>Navigation</strong> ticker bar</span></div>
+      </article>
+    </section>
+    <footer>Concept exploration only · Product structure follows the approved Mavora development specification.</footer>
+  </main>
+</body>
+</html>
