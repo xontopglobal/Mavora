@@ -74,6 +74,79 @@ function reportDatabaseError(res, error, context) {
   return res.status(503).json({ error: 'The requested service is temporarily unavailable.' });
 }
 
+async function verifyFlutterwaveTransaction(transactionId) {
+  const response = await fetch(`https://api.flutterwave.com/v3/transactions/${encodeURIComponent(transactionId)}/verify`, {
+    headers: { Authorization: `Bearer ${flutterwaveSecret}` }
+  });
+  const payload = await response.json();
+  if (!response.ok || payload.status !== 'success' || !payload.data) {
+    const error = new Error('Flutterwave verification failed');
+    error.providerPayload = payload;
+    throw error;
+  }
+  return payload.data;
+}
+
+function isoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+async function listFlutterwaveTransactions({ reference, from, to, status, page }) {
+  const params = new URLSearchParams({ from, to, tx_ref: reference, status, page: String(page) });
+  const response = await fetch(`https://api.flutterwave.com/v3/transactions?${params}`, {
+    headers: { Authorization: `Bearer ${flutterwaveSecret}`, Accept: 'application/json' }
+  });
+  const payload = await response.json();
+  if (!response.ok || payload.status !== 'success') {
+    const error = new Error('Flutterwave transaction listing failed');
+    error.providerPayload = payload;
+    throw error;
+  }
+  return payload;
+}
+
+async function processVerifiedMembershipPayment(payment, verified) {
+  const status = String(verified.status || '').toLowerCase();
+  const receipt = validateFlutterwaveReceipt({
+    providerReference: payment.provider_reference,
+    providerTransactionId: verified.id,
+    amount: payment.amount,
+    currency: payment.currency,
+    email: payment.owner_email
+  }, verified);
+  if (!receipt.ok) return { ok: false, status: 422, error: 'Provider transaction did not match the pending payment.' };
+  if (status === 'successful') {
+    const { data, error } = await serviceClient.rpc('finalize_verified_payment', {
+      p_provider_reference: payment.provider_reference,
+      p_provider_transaction_id: String(verified.id),
+      p_amount: verified.amount,
+      p_currency: verified.currency,
+      p_provider_status: status
+    });
+    if (error) return { ok: false, status: 422, error: 'Verified payment could not be finalized.', dbError: error };
+    return { ok: true, transactionId: data, status };
+  }
+  if (status === 'failed') {
+    const { error } = await serviceClient.rpc('fail_pending_membership_payment', {
+      p_provider_reference: payment.provider_reference,
+      p_provider_transaction_id: String(verified.id),
+      p_provider_status: status
+    });
+    if (error) return { ok: false, status: 422, error: 'Failed payment could not be recorded.', dbError: error };
+    return { ok: true, status };
+  }
+  if (status === 'reversed' || status === 'refunded') {
+    const { error } = await serviceClient.rpc('apply_verified_membership_reversal', {
+      p_provider_reference: payment.provider_reference,
+      p_provider_transaction_id: String(verified.id),
+      p_provider_status: status
+    });
+    if (error) return { ok: false, status: 422, error: 'Reversed payment could not be recorded.', dbError: error };
+    return { ok: true, status };
+  }
+  return { ok: false, status: 422, error: 'Provider transaction is not final.' };
+}
+
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'Mavora API', version: '0.3.0' }));
 app.get('/api/status', (_req, res) => res.json({ name: 'Mavora', modules: ['auth-foundation','social-api','kyc-review','verified-billing'] }));
 
@@ -379,39 +452,92 @@ app.post('/api/webhooks/flutterwave', asyncRoute(async (req, res) => {
   const { data: account, error: accountError } = await serviceClient.auth.admin.getUserById(payment.user_id);
   if (accountError || !account.user?.email) return res.status(503).json({ received: true, processed: false, error: 'Could not verify payment owner.' });
 
-  let verificationResponse;
   try {
-    const response = await fetch(`https://api.flutterwave.com/v3/transactions/${encodeURIComponent(providerTransactionId)}/verify`, {
-      headers: { Authorization: `Bearer ${flutterwaveSecret}` }
-    });
-    verificationResponse = await response.json();
-    if (!response.ok || verificationResponse.status !== 'success' || !verificationResponse.data) {
-      return res.status(502).json({ received: true, processed: false, error: 'Provider verification is unavailable.' });
+    const verified = await verifyFlutterwaveTransaction(providerTransactionId);
+    const result = await processVerifiedMembershipPayment({ ...payment, owner_email: account.user.email }, verified);
+    if (!result.ok) {
+      if (result.dbError) return reportDatabaseError(res, result.dbError, 'Process Flutterwave webhook');
+      return res.status(result.status).json({ received: true, processed: false, error: result.error });
     }
+    return res.json({ received: true, processed: true, status: result.status, transactionId: result.transactionId });
   } catch (error) {
     console.error('Flutterwave verification request failed:', error.message);
     return res.status(502).json({ received: true, processed: false, error: 'Provider verification is unavailable.' });
   }
+}));
 
-  const verified = verificationResponse.data;
-  const receipt = validateFlutterwaveReceipt({
-    providerReference: payment.provider_reference,
-    providerTransactionId,
-    amount: payment.amount,
-    currency: payment.currency,
-    email: account.user.email
-  }, verified);
-  if (!receipt.ok) return res.status(422).json({ received: true, processed: false, error: 'Provider transaction did not match the pending payment.' });
+app.post('/api/billing/verify', requireAuth, asyncRoute(async (req, res) => {
+  if (!serviceClient || !flutterwaveSecret) return res.status(503).json({ error: 'Billing is not configured.' });
+  const reference = typeof req.body?.reference === 'string' ? req.body.reference.trim() : '';
+  const transactionId = String(req.body?.transactionId ?? '').trim();
+  if (!reference || !/^\d+$/.test(transactionId)) return res.status(400).json({ error: 'A payment reference and Flutterwave transaction ID are required.' });
+  const { data: payment, error } = await serviceClient.from('payment_transactions')
+    .select('id,user_id,provider_reference,amount,currency,status,purpose,plan_code,billing_period')
+    .eq('provider', 'flutterwave').eq('provider_reference', reference).eq('user_id', req.user.id).maybeSingle();
+  if (error) return reportDatabaseError(res, error, 'Load payment for verification');
+  if (!payment || payment.purpose !== 'subscription') return res.status(404).json({ error: 'Payment reference not found.' });
+  const { data: account, error: accountError } = await serviceClient.auth.admin.getUserById(req.user.id);
+  if (accountError || !account.user?.email) return res.status(503).json({ error: 'Could not verify payment owner.' });
+  try {
+    const verified = await verifyFlutterwaveTransaction(transactionId);
+    const result = await processVerifiedMembershipPayment({ ...payment, owner_email: account.user.email }, verified);
+    if (!result.ok) {
+      if (result.dbError) return reportDatabaseError(res, result.dbError, 'Finalize verified payment');
+      return res.status(result.status).json({ error: result.error });
+    }
+    return res.json({ verified: true, status: result.status, transactionId: result.transactionId });
+  } catch (error) {
+    console.error('Flutterwave verification request failed:', error.message);
+    return res.status(502).json({ error: 'Provider verification is unavailable.' });
+  }
+}));
 
-  const { data: finalizedId, error: finalizeError } = await serviceClient.rpc('finalize_verified_payment', {
-    p_provider_reference: payment.provider_reference,
-    p_provider_transaction_id: providerTransactionId,
-    p_amount: verified.amount,
-    p_currency: verified.currency,
-    p_provider_status: verified.status
-  });
-  if (finalizeError) return reportDatabaseError(res, finalizeError, 'Finalize verified payment');
-  return res.json({ received: true, processed: true, transactionId: finalizedId });
+app.post('/api/billing/reconcile', asyncRoute(async (req, res) => {
+  if (!serviceClient || !flutterwaveSecret) return res.status(503).json({ error: 'Billing is not configured.' });
+  const token = req.get('x-billing-reconciliation-token');
+  if (!constantTimeEqual(process.env.BILLING_RECONCILIATION_TOKEN, token)) return res.status(401).json({ error: 'Reconciliation authentication failed.' });
+  const { data: payments, error } = await serviceClient.from('payment_transactions')
+    .select('id,user_id,provider_reference,amount,currency,status,purpose,plan_code,billing_period,created_at')
+    .eq('provider', 'flutterwave').eq('purpose', 'subscription').eq('status', 'pending')
+    .order('created_at', { ascending: true }).limit(100);
+  if (error) return reportDatabaseError(res, error, 'Load payments for reconciliation');
+  const results = [];
+  for (const payment of payments || []) {
+    try {
+      const { data: account } = await serviceClient.auth.admin.getUserById(payment.user_id);
+      if (!account.user?.email) continue;
+      const createdAt = new Date(payment.created_at);
+      const lookbackStart = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const from = isoDate(new Date(Math.max(lookbackStart, createdAt.getTime() - 24 * 60 * 60 * 1000)));
+      const to = isoDate(new Date());
+      let matched = null;
+      for (const status of ['successful', 'failed']) {
+        for (let page = 1; page <= 5 && !matched; page += 1) {
+          const payload = await listFlutterwaveTransactions({ reference: payment.provider_reference, from, to, status, page });
+          const entries = Array.isArray(payload.data) ? payload.data : [];
+          matched = entries.find((entry) => String(entry.tx_ref || '') === payment.provider_reference) || null;
+          if (matched || entries.length === 0) break;
+        }
+        if (matched) break;
+      }
+      if (!matched || !/^\d+$/.test(String(matched.id || ''))) {
+        results.push({ reference: payment.provider_reference, ok: false, status: 'not_found' });
+        continue;
+      }
+      const verified = await verifyFlutterwaveTransaction(matched.id);
+      const result = await processVerifiedMembershipPayment({ ...payment, owner_email: account.user.email }, verified);
+      results.push({ reference: payment.provider_reference, ok: result.ok, status: result.status || 'error' });
+    } catch (error) {
+      results.push({ reference: payment.provider_reference, ok: false, status: 'unavailable' });
+    }
+  }
+  return res.json({ processed: results.length, results });
+}));
+
+app.post('/api/billing/cancel', requireAuth, asyncRoute(async (req, res) => {
+  const { data, error } = await req.userClient.rpc('cancel_my_membership');
+  if (error) return res.status(error.code === 'P0002' ? 404 : 422).json({ error: 'Membership could not be cancelled.' });
+  return res.json({ subscriptionId: data, status: 'cancel_at_period_end' });
 }));
 
 app.use((error, _req, res, _next) => {

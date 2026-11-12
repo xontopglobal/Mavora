@@ -16,8 +16,19 @@ Android first, responsive web alongside it, iOS later. Mavora is planned as a gl
 - `supabase/migrations` — database schema, triggers and starter RLS
 - `docs` — product requirements, architecture, security and launch checklist
 
+## Hosting and configuration
+- Web frontend: Netlify (`apps/web`, React + Vite)
+- Backend API: Render (`apps/api`, Express)
+- Database, authentication and storage: Supabase
+- Mobile app: Expo + React Native (`apps/mobile`)
+- Payments: Flutterwave for eligible web flows; follow Google Play Billing requirements for Android digital benefits
+
+The mobile app uses `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` and `EXPO_PUBLIC_API_URL` from `apps/mobile/.env`. The Supabase URL and anon key are public client configuration protected by RLS. Keep `SUPABASE_SERVICE_ROLE_KEY` and Flutterwave secret credentials only in the trusted API environment (for local development, `apps/api/.env`; in deployment, Render environment variables). Never copy server secrets to a client `.env` file.
+
+Git ignores `.env` and `.env.*` files throughout the repository and keeps `.env.example` templates trackable. Do not overwrite an existing `.env` when following setup instructions.
+
 ## Approved product specification
-See [`docs/APPROVED_DEVELOPMENT_SPECIFICATION.md`](docs/APPROVED_DEVELOPMENT_SPECIFICATION.md) for the approved 18+ product requirements, friendship/follow privacy model, three membership stages, individual and business KYC, developer approvals, international currency rules, AI support, security, privacy and implementation roadmap.
+See [`docs/APPROVED_DEVELOPMENT_SPECIFICATION.md`](docs/APPROVED_DEVELOPMENT_SPECIFICATION.md) for the approved 18+ product requirements, friendship/follow privacy model, three membership stages, individual and business KYC, developer approvals, international currency rules, security, privacy and implementation roadmap. AI services are excluded from this implementation; the current mobile support screen is a local prototype and does not call an AI service.
 
 ## Current implementation status
 This pack is a development foundation, not a finished or production-ready social network. It includes runnable client shells, an API foundation, database migrations and implementation notes. The feed, full group workflows, realtime messaging, media pipelines, complete Google OAuth/deep linking, subscription entitlements, Flutterwave transaction verification, admin console, moderation workflows, analytics and account deletion still require implementation and testing.
