@@ -9,11 +9,11 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "helmet": "^8.0.0",
     "express-rate-limit": "^7.5.0",
-    "@supabase/supabase-js": "^2.119.0"
+    "helmet": "^8.0.0"
   }
 }
