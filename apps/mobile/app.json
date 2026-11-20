@@ -14,7 +14,8 @@
       "versionCode": 2
     },
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      "expo-status-bar"
     ],
     "extra": {
       "eas": {
