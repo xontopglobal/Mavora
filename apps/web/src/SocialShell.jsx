@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import './social.css';
-import { loadOwnProfile, saveOwnProfile } from './lib/profileService';
+import { loadOwnProfile, saveOwnProfile, uploadOwnAvatar } from './lib/profileService';
+import BusinessView from './components/BusinessView';
 
 async function apiRequest() {
   throw new Error('Backend features are not connected in this UI preview.');
@@ -26,6 +27,8 @@ const initialMessages = [
 ];
 
 const imageUrl = (id, width = 120, height = width) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&h=${height}&q=82`;
+const currentProfileName = (profile) => profile?.display_name?.trim() || profile?.username || 'Ofsocio member';
+const currentProfileAvatar = (profile) => profile?.avatar_display_url || (/^https?:\/\//i.test(profile?.avatar_url || '') ? profile.avatar_url : 'photo-1534528741775-53994a69daeb');
 
 function Avatar({ image, name, size = 'normal' }) {
   const source = image?.startsWith('https://') ? image : imageUrl(image);
@@ -36,7 +39,7 @@ function IconButton({ children, label, className = '' }) {
   return <button className={`icon-button ${className}`} type="button" aria-label={label} title={label}>{children}</button>;
 }
 
-function HomeView({ liked, setLiked, following, toggleFollowing, remotePosts = null, onCreatePost }) {
+function HomeView({ liked, setLiked, following, toggleFollowing, remotePosts = null, onCreatePost, currentProfile }) {
   const [draft, setDraft] = useState('');
   const [posts, setPosts] = useState([
     { id: 1, name: 'Ada Okafor', location: 'Lagos, Nigeria · 18 min ago', image: 'photo-1534528741775-53994a69daeb', text: 'Found a little quiet between the city and the sea. Keeping this one. #weekendnotes', photo: 'photo-1473116763249-2faaef81ccda', caption: 'Somewhere on the coast', likes: '284', replies: '32' },
@@ -51,7 +54,7 @@ function HomeView({ liked, setLiked, following, toggleFollowing, remotePosts = n
       onCreatePost(content);
       return;
     }
-    setPosts([{ id: Date.now(), name: 'You', location: 'Just now', image: 'photo-1534528741775-53994a69daeb', text: draft.trim(), photo: 'photo-1473116763249-2faaef81ccda', caption: 'Shared with your circle', likes: '0', replies: '0' }, ...posts]);
+    setPosts([{ id: Date.now(), name: currentProfileName(currentProfile), location: 'Just now', image: currentProfileAvatar(currentProfile), text: draft.trim(), photo: 'photo-1473116763249-2faaef81ccda', caption: 'Shared with your circle', likes: '0', replies: '0' }, ...posts]);
     setDraft('');
   }
 
@@ -106,9 +109,7 @@ function ReelsView() {
   return <><div className="view-heading"><div><div className="eyebrow">SHORT STORIES, FULL FEELING</div><h1>Reels</h1><p>Made by your circles, not an endless algorithm.</p></div><button className="button outline">Following <span>⌄</span></button></div><div className="reel-stage"><img src={imageUrl('photo-1470252649378-9c29740c9fa8', 1000, 1000)} alt="Warm light over a misty mountain valley" /><div className="reel-shade"/><button className="play-reel" type="button" onClick={() => setPlaying(!playing)} aria-label={playing ? 'Pause reel' : 'Play reel'}>{playing ? 'Ⅱ' : '▶'}</button><div className="reel-caption"><span className="eyebrow">OFSOCIO ORIGINAL · 00:18</span><h2>First light, before the world catches up.</h2><div className="reel-creator"><Avatar image="photo-1500648767791-00dcc994a43e" name="Malik Bello" /><div><strong>Malik Bello</strong><span>Accra · 2 hours ago</span></div><button className="follow-mini" type="button">＋ Follow</button></div></div><div className="reel-actions"><button type="button">♡<small>1.8k</small></button><button type="button">◯<small>86</small></button><button type="button">↗<small>Share</small></button><button type="button">◇<small>Save</small></button></div></div></>;
 }
 
-function BusinessView() {
-  return <><div className="view-heading"><div><div className="eyebrow">MADE HERE, FOUND TOGETHER</div><h1>Business</h1><p>Meet the people and independent brands behind the work.</p></div><button className="button primary">Create a page <span>＋</span></button></div><article className="business-hero panel"><img src={imageUrl('photo-1441986300917-64674bd600d8', 1200, 580)} alt="Independent studio storefront"/><div className="business-overlay"><span className="eyebrow">FEATURED STUDIO · ACCRA</span><h2>Objects with a story.</h2><p>Meet House of Nuru, a small-batch home studio making everyday things worth keeping.</p><button className="button light">Explore the page <span>↗</span></button></div></article><div className="section-title business-title"><div><span className="eyebrow">DISCOVER WITH INTENTION</span><h2>Independent finds</h2></div><button className="text-link">All businesses ↗</button></div><div className="listing-grid">{[['Studio Kora', 'Furniture · Lagos', 'photo-1494438639946-1ebd1d20bf85'], ['Nuru Botanics', 'Care · Accra', 'photo-1608571423902-eed4a5ad8108'], ['Abeni Objects', 'Design · Nairobi', 'photo-1490312278390-ab64016e0aa9']].map(([name, meta, image]) => <article className="listing-card panel" key={name}><img src={imageUrl(image, 600, 450)} alt=""/><div><strong>{name}</strong><span>{meta}</span><small>Verified business · Discover</small></div></article>)}</div></>;
-}
+
 
 function MembershipView({ catalog, profile, onCheckout }) {
   const [selected, setSelected] = useState('Ofsocio Free');
@@ -166,14 +167,16 @@ function SupportView({ faqOnly = false }) {
   return <><div className="view-heading"><div><div className="eyebrow">{faqOnly ? 'ANSWERS, WITHOUT THE RUNAROUND' : 'HERE WHEN YOU NEED A HAND'}</div><h1>{faqOnly ? 'Help & FAQ' : 'AI Support'}</h1><p>{faqOnly ? 'Clear answers about your account, safety and membership.' : 'Ask about Ofsocio. For sensitive issues, we’ll help you reach a person.'}</p></div></div><div className="support-layout"><section className="support-main panel"><div className="support-head"><div className="support-spark">✦</div><div><strong>{faqOnly ? 'Frequently asked' : 'Ofsocio Support'}</strong><span>{faqOnly ? 'Sample FAQ · Preview content' : 'UI preview · AI and human support not connected'}</span></div></div>{faqOnly ? <div className="faq-list">{faqs.map((item, index) => <details key={item}><summary><span>0{index + 1}</span>{item}<b>＋</b></summary><p>{index === 0 ? 'Open Your profile, choose Privacy, then set account visibility to Private. Existing followers remain approved until you remove them.' : index === 1 ? 'Verification is required only for selected services. A reviewed provider handles identity checks; Ofsocio stores the minimum verification outcome needed.' : 'Open the account or content menu and choose Report. You can also block the account immediately from its profile.'}</p></details>)}</div> : <><div className="assistant-message"><span className="assistant-avatar">✦</span><p>Hi Ada. I can help you find settings, understand membership, or get support with a safety concern. What’s on your mind?</p></div>{asked.map((item, index) => <React.Fragment key={index}><div className="user-message">{item}</div><div className="assistant-message"><span className="assistant-avatar">✦</span><p>I can point you in the right direction. For account-specific or sensitive issues, please use the human support path in Security Centre.</p></div></React.Fragment>)}<div className="prompt-chips">{['Privacy settings', 'Premium plans', 'Report a scam'].map((item) => <button type="button" onClick={() => setAsked([...asked, item])} key={item}>{item} ↗</button>)}</div><form className="support-input" onSubmit={(event) => { event.preventDefault(); if (question.trim()) { setAsked([...asked, question.trim()]); setQuestion(''); } }}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask a question..."/><button type="submit" aria-label="Send question">↗</button></form><small className="support-note">AI-generated guidance can be wrong. It cannot decide KYC, fraud, account enforcement or payment disputes.</small></>}</section><aside className="support-sidebar panel"><span className="eyebrow">POPULAR TOPICS</span>{['Your account', 'Privacy & safety', 'Membership & billing', 'Groups & community'].map((item, index) => <button className="topic-link" key={item} type="button"><span>{['◍', '◈', '✦', '◫'][index]}</span>{item}<b>↗</b></button>)}<div className="human-help"><span>PERSONAL SUPPORT</span><strong>Need a human?</strong><p>Reach our support team for account-specific help.</p><button className="text-link" type="button">Open a support case ↗</button></div></aside></div></>;
 }
 
-function ProfileView({ profile, loading, error, onSave }) {
+function ProfileView({ profile, loading, error, onSave, onUploadAvatar }) {
   const [tab, setTab] = useState('Posts');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageError, setMessageError] = useState(false);
   const [draft, setDraft] = useState(null);
   const displayName = profile?.display_name?.trim() || profile?.username || 'Ofsocio member';
-  const avatar = profile?.avatar_url || 'photo-1534528741775-53994a69daeb';
+  const avatar = profile?.avatar_display_url || (/^https?:\/\//i.test(profile?.avatar_url || '') ? profile.avatar_url : 'photo-1534528741775-53994a69daeb');
 
   useEffect(() => {
     if (profile) setDraft({
@@ -191,16 +194,38 @@ function ProfileView({ profile, loading, error, onSave }) {
     setDraft((current) => ({ ...current, [event.target.name]: event.target.value }));
   }
 
+  async function changePhoto(event) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    setPhotoUploading(true);
+    setMessage('');
+    setMessageError(false);
+    try {
+      const updated = await onUploadAvatar(file);
+      setMessage(updated.avatar_cleanup_warning || 'Profile photo updated.');
+      setMessageError(Boolean(updated.avatar_cleanup_warning));
+    } catch (uploadError) {
+      setMessage(uploadError.message || 'Profile photo could not be updated.');
+      setMessageError(true);
+    } finally {
+      setPhotoUploading(false);
+      input.value = '';
+    }
+  }
+
   async function submit(event) {
     event.preventDefault();
     setSaving(true);
     setMessage('');
+    setMessageError(false);
     try {
       await onSave(draft);
       setEditing(false);
       setMessage('Your profile has been saved.');
     } catch (error) {
       setMessage(error.message || 'Your profile could not be saved.');
+      setMessageError(true);
     } finally {
       setSaving(false);
     }
@@ -213,15 +238,16 @@ function ProfileView({ profile, loading, error, onSave }) {
       : <input name={name} value={draft?.[name] || ''} onChange={updateField} maxLength={options.maxLength} required={options.required} pattern={options.pattern} title={options.title} autoComplete={options.autoComplete || 'off'} />}
   </label>;
 
-  return <><div className="profile-cover"><div className="cover-lines"/><button className="profile-edit" type="button" onClick={() => { setMessage(''); setEditing((value) => !value); }} disabled={loading || !profile}>{editing ? 'Cancel editing' : 'Edit profile ↗'}</button></div>
-    <section className="profile-summary panel"><Avatar image={avatar} name={displayName} size="profile"/><div className="profile-details"><div className="profile-name-row"><div><h1>{displayName}</h1><span>{profile?.username ? `@${profile.username}` : 'Choose a username'}{profile?.country_code ? ` · ${profile.country_code.trim()}` : ''}</span></div><span className="profile-schema-note">Profile privacy settings are not connected</span></div><p>{profile?.bio || 'Add a short introduction to tell your circles about yourself.'}</p><div className="profile-stats"><span>{loading ? 'Loading profile…' : 'Profile details are synced to your account'}</span></div></div></section>
+  return <><div className="profile-cover"><div className="cover-lines"/><button className="profile-edit" type="button" onClick={() => { setMessage(''); setMessageError(false); setEditing((value) => !value); }} disabled={loading || !profile}>{editing ? 'Cancel editing' : 'Edit profile ↗'}</button></div>
+    <section className="profile-summary panel"><div className="profile-avatar-control"><Avatar image={avatar} name={displayName} size="profile"/><label className="profile-photo-upload">{photoUploading ? 'Uploading…' : 'Change photo'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={changePhoto} disabled={loading || photoUploading || !profile} aria-label="Upload a profile photo"/></label></div><div className="profile-details"><div className="profile-name-row"><div><h1>{displayName}</h1><span>{profile?.username ? `@${profile.username}` : 'Choose a username'}{profile?.country_code ? ` · ${profile.country_code.trim()}` : ''}</span></div><span className="profile-schema-note">Profile privacy settings are not connected</span></div><p>{profile?.bio || 'Add a short introduction to tell your circles about yourself.'}</p><div className="profile-stats"><span>{loading ? 'Loading profile…' : 'Profile details are synced to your account'}</span></div></div></section>
     {editing && draft && <form className="profile-editor panel" onSubmit={submit}>
       <div className="profile-editor-heading"><div><span className="eyebrow">YOUR ACCOUNT DETAILS</span><h2>Edit profile</h2><p>Changes save to your Ofsocio profile.</p></div></div>
       <div className="profile-editor-grid">{field('Display name', 'display_name', { maxLength: 80, required: true })}{field('Username', 'username', { maxLength: 30, required: true, pattern: '[A-Za-z0-9_.]{3,30}', title: 'Use 3–30 letters, numbers, periods, or underscores.' })}{field('Country code', 'country_code', { maxLength: 2, pattern: '[A-Za-z]{2}', title: 'Enter a two-letter country code.' })}{field('Preferred language', 'preferred_language', { maxLength: 10 })}{field('Preferred currency', 'preferred_currency', { maxLength: 3, pattern: '[A-Za-z]{3}', title: 'Enter a three-letter currency code.' })}{field('Timezone', 'timezone', { maxLength: 64 })}{field('Bio', 'bio', { multiline: true, maxLength: 280 })}</div>
-      <div className="profile-editor-footer"><span className="profile-save-message" role="status" aria-live="polite">{message}</span><button className="button primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button></div>
+      <div className="profile-editor-footer"><span className={messageError ? "profile-error" : "profile-save-message"} role="status" aria-live="polite">{message}</span><button className="button primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button></div>
     </form>}
     {error && <p className="profile-error" role="alert">{error}</p>}
-    {!editing && message && <p className="profile-save-message" role="status" aria-live="polite">{message}</p>}
+    {message && !editing && <p className={messageError ? 'profile-error' : 'profile-save-message'} role="status" aria-live="polite">{message}</p>}
+
     <div className="profile-tabs">{['Posts', 'Stories', 'About', 'Friends'].map((item) => <button type="button" className={tab === item ? 'active' : ''} onClick={() => setTab(item)} key={item}>{item}</button>)}</div><div className="profile-content panel"><span className="eyebrow">{tab.toUpperCase()}</span><h2>{tab === 'About' ? 'Your profile details' : 'Your Ofsocio profile'}</h2><p>{tab === 'About' ? 'Your editable profile details are shown above.' : 'Profile posts, stories, and circle activity are not connected yet.'}</p></div></>;
 }
 function CentreView({ privacy = false, isPrivate, setIsPrivate }) {
@@ -240,12 +266,12 @@ function CentreView({ privacy = false, isPrivate, setIsPrivate }) {
   return <><div className="view-heading"><div><div className="eyebrow">{privacy ? 'YOUR DATA, YOUR DECISIONS' : 'A QUIETER KIND OF CONFIDENCE'}</div><h1>{privacy ? 'Privacy Centre' : 'Security Centre'}</h1><p>{privacy ? 'Understand and shape how Ofsocio uses your information.' : 'A clear view of your account protection and recent activity.'}</p></div></div><div className="centre-layout"><section className="settings-list panel">{groups.map((item) => <div className="setting-row" key={item.key}><div className="setting-icon">{privacy ? '◈' : '⌑'}</div><div className="setting-description"><strong>{item.title}</strong><span>{item.detail}</span></div>{item.key === 'data' || item.key === 'sessions' || item.key === 'apps' ? <button className="text-link" type="button">{item.value} ↗</button> : item.key === 'privateAccount' ? <button className={`switch ${isPrivate ? 'enabled' : ''}`} role="switch" aria-checked={isPrivate} aria-label={item.title} onClick={() => setIsPrivate(!isPrivate)}><i /></button> : <button className={`switch ${settings[item.key] ? 'enabled' : ''}`} role="switch" aria-checked={settings[item.key]} aria-label={item.title} onClick={() => setSettings({ ...settings, [item.key]: !settings[item.key] })}><i /></button>}</div>)}</section><aside className="security-card panel"><div className="security-emblem">{privacy ? '◈' : '✦'}</div><span className="eyebrow">{privacy ? 'PRIVACY SNAPSHOT' : 'ACCOUNT HEALTH'}</span><h2>{privacy ? 'You’re in control.' : 'Your account is in good shape.'}</h2><p>{privacy ? 'Review visibility and data choices at any time. Changes should be clear, reversible and respected.' : 'Security settings are a visual preview and are not connected or enforced.'}</p><button className="text-link">{privacy ? 'Read privacy notice' : 'Review recent activity'} ↗</button></aside></div><p className="disclaimer">Controls shown here are prototype interactions. Production settings must be enforced by authenticated server policies.</p></>;
 }
 
-function Sidebar({ view, setView, onSignOut, preview, exitLabel, staffAccess }) {
-  return <aside className="desktop-sidebar"><a className="wordmark" href="#home" onClick={(event) => { event.preventDefault(); setView('home'); }}>OFSOCIO<small>social</small></a><button className="account-chip" type="button"><Avatar image="photo-1534528741775-53994a69daeb" name="Ada Okafor"/><span><strong>Ada Okafor</strong><small>{preview ? 'Local preview' : 'Your account'}</small></span><b>⌄</b></button><div className="side-nav">{navigation.map((group) => <div className="nav-group" key={group.section}><div className="nav-caption">{group.section}</div>{group.items.map(([id, icon, label]) => <button className={`side-link ${view === id ? 'active' : ''}`} type="button" key={id} onClick={() => setView(id)}><span className="side-icon">{icon}</span>{label}{id === 'messages' && <i className="unread-dot"/>}</button>)}</div>)}{(preview || staffAccess) && <div className="nav-group"><div className="nav-caption">{preview ? 'STAFF PREVIEW' : 'STAFF WORKSPACE'}</div><button className={`side-link ${view === 'approvals' ? 'active' : ''}`} type="button" onClick={() => setView('approvals')}><span className="side-icon">⌑</span>Approval desk{preview && <span className="staff-badge">DEMO</span>}</button></div>}</div><div className="sidebar-bottom"><button className="side-link" onClick={() => setView('privacy')} type="button"><span className="side-icon">◈</span>Privacy settings</button><button className="side-link" onClick={onSignOut} type="button"><span className="side-icon">↗</span>{exitLabel || (preview ? 'Exit preview' : 'Sign out')}</button></div></aside>;
+function Sidebar({ view, setView, onSignOut, preview, exitLabel, staffAccess, currentProfile }) {
+  return <aside className="desktop-sidebar"><a className="wordmark" href="#home" onClick={(event) => { event.preventDefault(); setView('home'); }}>OFSOCIO<small>social</small></a><button className="account-chip" type="button"><Avatar image={currentProfileAvatar(currentProfile)} name={currentProfileName(currentProfile)}/><span><strong>{currentProfileName(currentProfile)}</strong><small>{preview ? 'Local preview' : 'Your account'}</small></span><b>⌄</b></button><div className="side-nav">{navigation.map((group) => <div className="nav-group" key={group.section}><div className="nav-caption">{group.section}</div>{group.items.map(([id, icon, label]) => <button className={`side-link ${view === id ? 'active' : ''}`} type="button" key={id} onClick={() => setView(id)}><span className="side-icon">{icon}</span>{label}{id === 'messages' && <i className="unread-dot"/>}</button>)}</div>)}{(preview || staffAccess) && <div className="nav-group"><div className="nav-caption">{preview ? 'STAFF PREVIEW' : 'STAFF WORKSPACE'}</div><button className={`side-link ${view === 'approvals' ? 'active' : ''}`} type="button" onClick={() => setView('approvals')}><span className="side-icon">⌑</span>Approval desk{preview && <span className="staff-badge">DEMO</span>}</button></div>}</div><div className="sidebar-bottom"><button className="side-link" onClick={() => setView('privacy')} type="button"><span className="side-icon">◈</span>Privacy settings</button><button className="side-link" onClick={onSignOut} type="button"><span className="side-icon">↗</span>{exitLabel || (preview ? 'Exit preview' : 'Sign out')}</button></div></aside>;
 }
 
-function RightRail({ view, toggleFollowing, following }) {
-  return <aside className="right-rail"><div className="rail-block profile-nudge"><div className="rail-heading"><span className="eyebrow">YOUR SPACE</span><button type="button" className="text-link" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'profile' }))}>Edit</button></div><div className="mini-profile"><Avatar image="photo-1534528741775-53994a69daeb" name="Ada Okafor" size="large"/><div><strong>Ada Okafor</strong><span>Lagos, Nigeria</span></div></div><div className="profile-progress"><div><span>Profile</span><strong>72%</strong></div><div className="progress-track"><i/></div><small>Add a few details to help your circles find you.</small></div></div><div className="rail-block"><div className="rail-heading"><div><span className="eyebrow">GOOD PEOPLE</span><h3>Suggested for you</h3></div><button type="button" className="text-link">All</button></div>{people.map((person) => <div className="suggested-person" key={person.name}><Avatar image={person.image} name={person.name}/><div><strong>{person.name}</strong><span>{person.detail}</span></div><button type="button" className="plus-follow" onClick={() => toggleFollowing(person.name)} aria-label={following.includes(person.name) ? `Unfollow ${person.name}` : `Follow ${person.name}`}>{following.includes(person.name) ? '✓' : '＋'}</button></div>)}</div><div className="rail-promo"><span className="promo-star">✦</span><span className="eyebrow">A LITTLE MORE ROOM TO GROW</span><h3>Make more of what you share.</h3><p>Explore creator tools with Ofsocio Premium.</p><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'membership' }))}>Explore Premium ↗</button></div><footer className="rail-footer">About · Community · Privacy · Terms<br/>© 2026 Ofsocio Social</footer></aside>;
+function RightRail({ view, toggleFollowing, following, currentProfile }) {
+  return <aside className="right-rail"><div className="rail-block profile-nudge"><div className="rail-heading"><span className="eyebrow">YOUR SPACE</span><button type="button" className="text-link" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'profile' }))}>Edit</button></div><div className="mini-profile"><Avatar image={currentProfileAvatar(currentProfile)} name={currentProfileName(currentProfile)} size="large"/><div><strong>{currentProfileName(currentProfile)}</strong><span>{currentProfile?.country_code?.trim() || 'Your profile'}</span></div></div><div className="profile-progress"><div><span>Profile</span><strong>72%</strong></div><div className="progress-track"><i/></div><small>Add a few details to help your circles find you.</small></div></div><div className="rail-block"><div className="rail-heading"><div><span className="eyebrow">GOOD PEOPLE</span><h3>Suggested for you</h3></div><button type="button" className="text-link">All</button></div>{people.map((person) => <div className="suggested-person" key={person.name}><Avatar image={person.image} name={person.name}/><div><strong>{person.name}</strong><span>{person.detail}</span></div><button type="button" className="plus-follow" onClick={() => toggleFollowing(person.name)} aria-label={following.includes(person.name) ? `Unfollow ${person.name}` : `Follow ${person.name}`}>{following.includes(person.name) ? '✓' : '＋'}</button></div>)}</div><div className="rail-promo"><span className="promo-star">✦</span><span className="eyebrow">A LITTLE MORE ROOM TO GROW</span><h3>Make more of what you share.</h3><p>Explore creator tools with Ofsocio Premium.</p><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'membership' }))}>Explore Premium ↗</button></div><footer className="rail-footer">About · Community · Privacy · Terms<br/>© 2026 Ofsocio Social</footer></aside>;
 }
 
 export default function SocialShell({ preview, onExit, accessToken, exitLabel, userId }) {
@@ -438,27 +464,27 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel, u
   const titles = { home: 'For you', friends: 'Circles', reels: 'Reels', messages: 'Messages', groups: 'Groups', business: 'Business', profile: 'Your profile', membership: 'Membership', kyc: 'Verification', approvals: 'Approval desk', support: 'AI Support', faq: 'Help & FAQ', security: 'Security Centre', privacy: 'Privacy Centre' };
 
   return <div className="ofsocio-app">
-    <Sidebar view={view} setView={navigate} onSignOut={onExit} preview={preview} exitLabel={exitLabel} staffAccess={capabilities.includes('kyc.read')}/>
-    <div className="app-body"><header className="topbar"><button className="mobile-brand" onClick={() => navigate('home')} type="button">OFSOCIO</button><div className="global-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search people, circles and ideas" aria-label="Search Ofsocio"/><kbd>⌘ K</kbd></div><div className="top-actions"><button className="top-create" onClick={() => navigate('home')} type="button"><span>＋</span> Create</button><IconButton label="Notifications" className="notification-button">◌<i/></IconButton><button className="top-avatar" onClick={() => navigate('profile')} type="button"><Avatar image="photo-1534528741775-53994a69daeb" name="Ada Okafor"/></button></div></header>
+    <Sidebar view={view} setView={navigate} onSignOut={onExit} preview={preview} exitLabel={exitLabel} staffAccess={capabilities.includes('kyc.read')} currentProfile={accountProfile}/>
+    <div className="app-body"><header className="topbar"><button className="mobile-brand" onClick={() => navigate('home')} type="button">OFSOCIO</button><div className="global-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search people, circles and ideas" aria-label="Search Ofsocio"/><kbd>⌘ K</kbd></div><div className="top-actions"><button className="top-create" onClick={() => navigate('home')} type="button"><span>＋</span> Create</button><IconButton label="Notifications" className="notification-button">◌<i/></IconButton><button className="top-avatar" onClick={() => navigate('profile')} type="button"><Avatar image={currentProfileAvatar(accountProfile)} name={currentProfileName(accountProfile)}/></button></div></header>
       {preview && <div className="preview-banner"><span>LOCAL PREVIEW</span> Social features use sample content; your profile editor saves account details.<button onClick={onExit} type="button">{exitLabel || 'Exit preview'} <b>×</b></button></div>}
       {!preview && apiNotice && <div className="backend-notice" role="status">Backend notice: {apiNotice}</div>}
       <div className="workspace"><main className="main-column" aria-label={titles[view]}>
-        {view === 'home' && <HomeView liked={liked} setLiked={setLiked} following={following} toggleFollowing={toggleFollowing} remotePosts={remotePosts} onCreatePost={accessToken && !preview ? createPost : undefined}/>}
+        {view === 'home' && <HomeView liked={liked} setLiked={setLiked} following={following} toggleFollowing={toggleFollowing} remotePosts={remotePosts} onCreatePost={accessToken && !preview ? createPost : undefined} currentProfile={accountProfile}/>}
         {view === 'friends' && <FriendsView following={following} toggleFollowing={toggleFollowing}/>}
         {view === 'messages' && <MessagesView/>}
         {view === 'groups' && <GroupsView/>}
         {view === 'reels' && <ReelsView/>}
-        {view === 'business' && <BusinessView/>}
+        {view === 'business' && <BusinessView userId={userId}/>}
         {view === 'membership' && <MembershipView catalog={membershipCatalog} profile={remoteProfile} onCheckout={accessToken && !preview ? startCheckout : undefined}/>}
         {view === 'kyc' && <KycView applications={kycApplications} onSubmitApplication={accessToken && !preview ? submitKyc : undefined}/>}
         {view === 'approvals' && (preview || capabilities.includes('kyc.read')) && <ApprovalView preview={preview} applications={approvalApplications} onReview={reviewKyc}/>}
         {view === 'support' && <SupportView/>}
         {view === 'faq' && <SupportView faqOnly/>}
-        {view === 'profile' && <ProfileView profile={accountProfile} loading={profileLoading} error={profileError} onSave={saveProfile}/>}
+        {view === 'profile' && <ProfileView profile={accountProfile} loading={profileLoading} error={profileError} onSave={saveProfile} onUploadAvatar={(file) => uploadOwnAvatar(userId, file).then((updated) => { setAccountProfile(updated); return updated; })}/>}
         {view === 'security' && <CentreView/>}
         {view === 'privacy' && <CentreView privacy isPrivate={isPrivate} setIsPrivate={updatePrivacy}/>}
-        {view === 'create' && <HomeView liked={liked} setLiked={setLiked} following={following} toggleFollowing={toggleFollowing} remotePosts={remotePosts} onCreatePost={accessToken && !preview ? createPost : undefined}/>}
-      </main><RightRail view={view} toggleFollowing={toggleFollowing} following={following}/></div>
+        {view === 'create' && <HomeView liked={liked} setLiked={setLiked} following={following} toggleFollowing={toggleFollowing} remotePosts={remotePosts} onCreatePost={accessToken && !preview ? createPost : undefined} currentProfile={accountProfile}/>}
+      </main><RightRail view={view} toggleFollowing={toggleFollowing} following={following} currentProfile={accountProfile}/></div>
       <nav className="mobile-nav" aria-label="Primary navigation">{mobileItems.map(([id, icon, label]) => <button className={view === id || (id === 'create' && view === 'home') ? 'active' : ''} key={id} type="button" onClick={() => id === 'create' ? navigate('home') : navigate(id)}><span>{icon}</span>{label}</button>)}</nav>
       <button className="mobile-more" onClick={() => setMobileMenu(!mobileMenu)} type="button" aria-label="More sections">{mobileMenu ? '×' : '···'}</button>
       {mobileMenu && <div className="mobile-menu">{navigation.flatMap((group) => group.items).map(([id, icon, label]) => <button key={id} type="button" onClick={() => navigate(id)}><span>{icon}</span>{label}</button>)}{(preview || capabilities.includes('kyc.read')) && <button type="button" onClick={() => navigate('approvals')}><span>⌑</span>Approval desk</button>}</div>}
