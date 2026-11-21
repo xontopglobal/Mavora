@@ -3,13 +3,13 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { supabase } from './lib/supabase';
 import './style.css';
+import SocialShell from './SocialShell';
 
 function App() {
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState('Sign in');
-  const [tab, setTab] = useState('Home');
   const [message, setMessage] = useState(
     'Connect. Share. Discover. Grow.'
   );
@@ -79,7 +79,7 @@ function App() {
     setLoading(true);
     setMessage(
       mode === 'Sign up'
-        ? 'Creating your Mavora account...'
+        ? 'Creating your Ofsocio account...'
         : 'Signing you in...'
     );
 
@@ -94,7 +94,7 @@ function App() {
 
         if (data.session) {
           setSession(data.session);
-          setMessage('Your Mavora account has been created.');
+          setMessage('Your Ofsocio account has been created.');
         } else {
           setMessage(
             'Registration successful! Please check your email and confirm your account before signing in.'
@@ -110,7 +110,7 @@ function App() {
         if (error) throw error;
 
         setSession(data.session);
-        setMessage('Welcome back to Mavora!');
+        setMessage('Welcome back to Ofsocio!');
       }
     } catch (error) {
       console.error('Authentication error:', error);
@@ -201,13 +201,13 @@ function App() {
     return (
       <main className="auth">
         <section className="card">
-          <div className="brand">MAVORA</div>
+          <div className="brand">OFSOCIO</div>
 
           <p className="muted">
             Connect. Share. Discover. Grow.
           </p>
 
-          <h1>{mode} to Mavora</h1>
+          <h1>{mode} to Ofsocio</h1>
 
           <form onSubmit={submit}>
             <input
@@ -263,69 +263,19 @@ function App() {
           </p>
 
           <p className="small">
-            Mavora account authentication.
+            Ofsocio account authentication.
           </p>
         </section>
       </main>
     );
   }
 
-  const tabs = [
-    'Home',
-    'Groups',
-    'Messages',
-    'Marketplace',
-    'Profile'
-  ];
-
   return (
-    <main className="app">
-      <header>
-        <div className="brand">MAVORA</div>
-
-        <div className="auth-area">
-          <span className="auth-email">
-            <strong>Account:</strong>{' '}
-            {session.user.email || 'Email not available'}
-          </span>
-
-          <button
-            type="button"
-            className="secondary"
-            onClick={signOut}
-            disabled={loading}
-          >
-            {loading ? 'Please wait...' : 'Sign out'}
-          </button>
-        </div>
-      </header>
-
-      <nav>
-        {tabs.map((t) => (
-          <button
-            type="button"
-            className={tab === t ? 'selected' : ''}
-            onClick={() => setTab(t)}
-            key={t}
-          >
-            {t}
-          </button>
-        ))}
-      </nav>
-
-      <section className="welcome">
-        <h1>{tab}</h1>
-
-        <p>
-          Your {tab.toLowerCase()} experience will be developed here
-          and connected to Mavora's API and database.
-        </p>
-
-        <p className="small">
-          Welcome to Mavora. Your authenticated session is active.
-        </p>
-      </section>
-    </main>
+    <SocialShell
+      preview
+      onExit={signOut}
+      exitLabel="Sign out"
+    />
   );
 }
 
