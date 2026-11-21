@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './social.css';
+import { loadOwnProfile, saveOwnProfile } from './lib/profileService';
 
 async function apiRequest() {
   throw new Error('Backend features are not connected in this UI preview.');
@@ -165,11 +166,64 @@ function SupportView({ faqOnly = false }) {
   return <><div className="view-heading"><div><div className="eyebrow">{faqOnly ? 'ANSWERS, WITHOUT THE RUNAROUND' : 'HERE WHEN YOU NEED A HAND'}</div><h1>{faqOnly ? 'Help & FAQ' : 'AI Support'}</h1><p>{faqOnly ? 'Clear answers about your account, safety and membership.' : 'Ask about Ofsocio. For sensitive issues, we’ll help you reach a person.'}</p></div></div><div className="support-layout"><section className="support-main panel"><div className="support-head"><div className="support-spark">✦</div><div><strong>{faqOnly ? 'Frequently asked' : 'Ofsocio Support'}</strong><span>{faqOnly ? 'Sample FAQ · Preview content' : 'UI preview · AI and human support not connected'}</span></div></div>{faqOnly ? <div className="faq-list">{faqs.map((item, index) => <details key={item}><summary><span>0{index + 1}</span>{item}<b>＋</b></summary><p>{index === 0 ? 'Open Your profile, choose Privacy, then set account visibility to Private. Existing followers remain approved until you remove them.' : index === 1 ? 'Verification is required only for selected services. A reviewed provider handles identity checks; Ofsocio stores the minimum verification outcome needed.' : 'Open the account or content menu and choose Report. You can also block the account immediately from its profile.'}</p></details>)}</div> : <><div className="assistant-message"><span className="assistant-avatar">✦</span><p>Hi Ada. I can help you find settings, understand membership, or get support with a safety concern. What’s on your mind?</p></div>{asked.map((item, index) => <React.Fragment key={index}><div className="user-message">{item}</div><div className="assistant-message"><span className="assistant-avatar">✦</span><p>I can point you in the right direction. For account-specific or sensitive issues, please use the human support path in Security Centre.</p></div></React.Fragment>)}<div className="prompt-chips">{['Privacy settings', 'Premium plans', 'Report a scam'].map((item) => <button type="button" onClick={() => setAsked([...asked, item])} key={item}>{item} ↗</button>)}</div><form className="support-input" onSubmit={(event) => { event.preventDefault(); if (question.trim()) { setAsked([...asked, question.trim()]); setQuestion(''); } }}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask a question..."/><button type="submit" aria-label="Send question">↗</button></form><small className="support-note">AI-generated guidance can be wrong. It cannot decide KYC, fraud, account enforcement or payment disputes.</small></>}</section><aside className="support-sidebar panel"><span className="eyebrow">POPULAR TOPICS</span>{['Your account', 'Privacy & safety', 'Membership & billing', 'Groups & community'].map((item, index) => <button className="topic-link" key={item} type="button"><span>{['◍', '◈', '✦', '◫'][index]}</span>{item}<b>↗</b></button>)}<div className="human-help"><span>PERSONAL SUPPORT</span><strong>Need a human?</strong><p>Reach our support team for account-specific help.</p><button className="text-link" type="button">Open a support case ↗</button></div></aside></div></>;
 }
 
-function ProfileView({ isPrivate, setIsPrivate, following }) {
+function ProfileView({ profile, loading, error, onSave }) {
   const [tab, setTab] = useState('Posts');
-  return <><div className="profile-cover"><div className="cover-lines"/><span className="profile-edit">Edit profile ↗</span></div><section className="profile-summary panel"><Avatar image="photo-1534528741775-53994a69daeb" name="Ada Okafor" size="profile"/><div className="profile-details"><div className="profile-name-row"><div><h1>Ada Okafor <span className="verified">✦</span></h1><span>@adaokafor · Lagos, Nigeria</span></div><button className={`privacy-toggle ${isPrivate ? 'on' : ''}`} onClick={() => setIsPrivate(!isPrivate)} type="button"><span>{isPrivate ? '◈' : '◎'}</span>{isPrivate ? 'Private account' : 'Public account'}<i /></button></div><p>Collecting places, people and small moments. Designer, occasional ocean chaser.</p><div className="profile-stats"><span><strong>128</strong> posts</span><span><strong>2.4k</strong> followers</span><span><strong>{following.length}</strong> following</span></div></div></section><div className="profile-tabs">{['Posts', 'Stories', 'About', 'Friends'].map((item) => <button type="button" className={tab === item ? 'active' : ''} onClick={() => setTab(item)} key={item}>{item}</button>)}</div><div className="profile-content panel"><span className="eyebrow">{tab.toUpperCase()}</span><h2>{tab === 'Posts' ? 'A little more of Ada.' : tab === 'Stories' ? 'The last 24 hours.' : tab === 'About' ? 'The details that make a person.' : 'People in Ada’s circle.'}</h2><p>{isPrivate ? 'Your account is private. Only approved followers can see protected posts and profile details.' : 'Your profile is public. Posts still follow their own audience settings.'}</p><div className="profile-photo-grid">{['photo-1473116763249-2faaef81ccda', 'photo-1500530855697-b586d89ba3ee', 'photo-1470252649378-9c29740c9fa8'].map((image) => <img src={imageUrl(image, 400, 400)} alt="Ada’s recent post" key={image}/>)}</div></div></>;
-}
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [draft, setDraft] = useState(null);
+  const displayName = profile?.display_name?.trim() || profile?.username || 'Ofsocio member';
+  const avatar = profile?.avatar_url || 'photo-1534528741775-53994a69daeb';
 
+  useEffect(() => {
+    if (profile) setDraft({
+      username: profile.username || '',
+      display_name: profile.display_name || '',
+      bio: profile.bio || '',
+      country_code: profile.country_code?.trim() || '',
+      preferred_language: profile.preferred_language || 'en',
+      preferred_currency: profile.preferred_currency?.trim() || '',
+      timezone: profile.timezone || ''
+    });
+  }, [profile]);
+
+  function updateField(event) {
+    setDraft((current) => ({ ...current, [event.target.name]: event.target.value }));
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true);
+    setMessage('');
+    try {
+      await onSave(draft);
+      setEditing(false);
+      setMessage('Your profile has been saved.');
+    } catch (error) {
+      setMessage(error.message || 'Your profile could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const field = (label, name, options = {}) => <label className="profile-field" key={name}>
+    <span>{label}</span>
+    {options.multiline
+      ? <textarea name={name} value={draft?.[name] || ''} onChange={updateField} maxLength={options.maxLength} rows="4" />
+      : <input name={name} value={draft?.[name] || ''} onChange={updateField} maxLength={options.maxLength} required={options.required} pattern={options.pattern} title={options.title} autoComplete={options.autoComplete || 'off'} />}
+  </label>;
+
+  return <><div className="profile-cover"><div className="cover-lines"/><button className="profile-edit" type="button" onClick={() => { setMessage(''); setEditing((value) => !value); }} disabled={loading || !profile}>{editing ? 'Cancel editing' : 'Edit profile ↗'}</button></div>
+    <section className="profile-summary panel"><Avatar image={avatar} name={displayName} size="profile"/><div className="profile-details"><div className="profile-name-row"><div><h1>{displayName}</h1><span>{profile?.username ? `@${profile.username}` : 'Choose a username'}{profile?.country_code ? ` · ${profile.country_code.trim()}` : ''}</span></div><span className="profile-schema-note">Profile privacy settings are not connected</span></div><p>{profile?.bio || 'Add a short introduction to tell your circles about yourself.'}</p><div className="profile-stats"><span>{loading ? 'Loading profile…' : 'Profile details are synced to your account'}</span></div></div></section>
+    {editing && draft && <form className="profile-editor panel" onSubmit={submit}>
+      <div className="profile-editor-heading"><div><span className="eyebrow">YOUR ACCOUNT DETAILS</span><h2>Edit profile</h2><p>Changes save to your Ofsocio profile.</p></div></div>
+      <div className="profile-editor-grid">{field('Display name', 'display_name', { maxLength: 80, required: true })}{field('Username', 'username', { maxLength: 30, required: true, pattern: '[A-Za-z0-9_.]{3,30}', title: 'Use 3–30 letters, numbers, periods, or underscores.' })}{field('Country code', 'country_code', { maxLength: 2, pattern: '[A-Za-z]{2}', title: 'Enter a two-letter country code.' })}{field('Preferred language', 'preferred_language', { maxLength: 10 })}{field('Preferred currency', 'preferred_currency', { maxLength: 3, pattern: '[A-Za-z]{3}', title: 'Enter a three-letter currency code.' })}{field('Timezone', 'timezone', { maxLength: 64 })}{field('Bio', 'bio', { multiline: true, maxLength: 280 })}</div>
+      <div className="profile-editor-footer"><span className="profile-save-message" role="status" aria-live="polite">{message}</span><button className="button primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button></div>
+    </form>}
+    {error && <p className="profile-error" role="alert">{error}</p>}
+    {!editing && message && <p className="profile-save-message" role="status" aria-live="polite">{message}</p>}
+    <div className="profile-tabs">{['Posts', 'Stories', 'About', 'Friends'].map((item) => <button type="button" className={tab === item ? 'active' : ''} onClick={() => setTab(item)} key={item}>{item}</button>)}</div><div className="profile-content panel"><span className="eyebrow">{tab.toUpperCase()}</span><h2>{tab === 'About' ? 'Your profile details' : 'Your Ofsocio profile'}</h2><p>{tab === 'About' ? 'Your editable profile details are shown above.' : 'Profile posts, stories, and circle activity are not connected yet.'}</p></div></>;
+}
 function CentreView({ privacy = false, isPrivate, setIsPrivate }) {
   const [settings, setSettings] = useState({ twoFactor: true, loginAlerts: true, messageRequests: false, activityStatus: false, personalizedDiscovery: true });
   const groups = privacy ? [
@@ -191,10 +245,10 @@ function Sidebar({ view, setView, onSignOut, preview, exitLabel, staffAccess }) 
 }
 
 function RightRail({ view, toggleFollowing, following }) {
-  return <aside className="right-rail"><div className="rail-block profile-nudge"><div className="rail-heading"><span className="eyebrow">YOUR SPACE</span><button type="button" className="text-link">Edit</button></div><div className="mini-profile"><Avatar image="photo-1534528741775-53994a69daeb" name="Ada Okafor" size="large"/><div><strong>Ada Okafor</strong><span>Lagos, Nigeria</span></div></div><div className="profile-progress"><div><span>Profile</span><strong>72%</strong></div><div className="progress-track"><i/></div><small>Add a few details to help your circles find you.</small></div></div><div className="rail-block"><div className="rail-heading"><div><span className="eyebrow">GOOD PEOPLE</span><h3>Suggested for you</h3></div><button type="button" className="text-link">All</button></div>{people.map((person) => <div className="suggested-person" key={person.name}><Avatar image={person.image} name={person.name}/><div><strong>{person.name}</strong><span>{person.detail}</span></div><button type="button" className="plus-follow" onClick={() => toggleFollowing(person.name)} aria-label={following.includes(person.name) ? `Unfollow ${person.name}` : `Follow ${person.name}`}>{following.includes(person.name) ? '✓' : '＋'}</button></div>)}</div><div className="rail-promo"><span className="promo-star">✦</span><span className="eyebrow">A LITTLE MORE ROOM TO GROW</span><h3>Make more of what you share.</h3><p>Explore creator tools with Ofsocio Premium.</p><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'membership' }))}>Explore Premium ↗</button></div><footer className="rail-footer">About · Community · Privacy · Terms<br/>© 2026 Ofsocio Social</footer></aside>;
+  return <aside className="right-rail"><div className="rail-block profile-nudge"><div className="rail-heading"><span className="eyebrow">YOUR SPACE</span><button type="button" className="text-link" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'profile' }))}>Edit</button></div><div className="mini-profile"><Avatar image="photo-1534528741775-53994a69daeb" name="Ada Okafor" size="large"/><div><strong>Ada Okafor</strong><span>Lagos, Nigeria</span></div></div><div className="profile-progress"><div><span>Profile</span><strong>72%</strong></div><div className="progress-track"><i/></div><small>Add a few details to help your circles find you.</small></div></div><div className="rail-block"><div className="rail-heading"><div><span className="eyebrow">GOOD PEOPLE</span><h3>Suggested for you</h3></div><button type="button" className="text-link">All</button></div>{people.map((person) => <div className="suggested-person" key={person.name}><Avatar image={person.image} name={person.name}/><div><strong>{person.name}</strong><span>{person.detail}</span></div><button type="button" className="plus-follow" onClick={() => toggleFollowing(person.name)} aria-label={following.includes(person.name) ? `Unfollow ${person.name}` : `Follow ${person.name}`}>{following.includes(person.name) ? '✓' : '＋'}</button></div>)}</div><div className="rail-promo"><span className="promo-star">✦</span><span className="eyebrow">A LITTLE MORE ROOM TO GROW</span><h3>Make more of what you share.</h3><p>Explore creator tools with Ofsocio Premium.</p><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'membership' }))}>Explore Premium ↗</button></div><footer className="rail-footer">About · Community · Privacy · Terms<br/>© 2026 Ofsocio Social</footer></aside>;
 }
 
-export default function SocialShell({ preview, onExit, accessToken, exitLabel }) {
+export default function SocialShell({ preview, onExit, accessToken, exitLabel, userId }) {
   const [view, setView] = useState('home');
   const [liked, setLiked] = useState([]);
   const [following, setFollowing] = useState(['Nia Adebayo']);
@@ -202,6 +256,9 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel })
   const [mobileMenu, setMobileMenu] = useState(false);
   const [search, setSearch] = useState('');
   const [remoteProfile, setRemoteProfile] = useState(null);
+  const [accountProfile, setAccountProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState('');
   const [remotePosts, setRemotePosts] = useState(null);
   const [membershipCatalog, setMembershipCatalog] = useState(null);
   const [kycApplications, setKycApplications] = useState([]);
@@ -209,6 +266,28 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel })
   const [approvalApplications, setApprovalApplications] = useState([]);
   const [apiNotice, setApiNotice] = useState('');
   const mobileItems = [['home', '⌂', 'Home'], ['friends', '◉', 'Circles'], ['create', '＋', 'Create'], ['messages', '✉', 'Inbox'], ['profile', '◍', 'You']];
+
+  useEffect(() => {
+    if (!userId) {
+      setAccountProfile(null);
+      return undefined;
+    }
+    let active = true;
+    setProfileLoading(true);
+    setProfileError('');
+    loadOwnProfile(userId)
+      .then((profile) => { if (active) setAccountProfile(profile); })
+      .catch((error) => { if (active) setProfileError(error.message || 'Your profile could not be loaded.'); })
+      .finally(() => { if (active) setProfileLoading(false); });
+    return () => { active = false; };
+  }, [userId]);
+
+  async function saveProfile(values) {
+    setProfileError('');
+    const savedProfile = await saveOwnProfile(userId, values);
+    setAccountProfile(savedProfile);
+    return savedProfile;
+  }
 
   useEffect(() => {
     if (preview || !accessToken) {
@@ -361,7 +440,7 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel })
   return <div className="ofsocio-app">
     <Sidebar view={view} setView={navigate} onSignOut={onExit} preview={preview} exitLabel={exitLabel} staffAccess={capabilities.includes('kyc.read')}/>
     <div className="app-body"><header className="topbar"><button className="mobile-brand" onClick={() => navigate('home')} type="button">OFSOCIO</button><div className="global-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search people, circles and ideas" aria-label="Search Ofsocio"/><kbd>⌘ K</kbd></div><div className="top-actions"><button className="top-create" onClick={() => navigate('home')} type="button"><span>＋</span> Create</button><IconButton label="Notifications" className="notification-button">◌<i/></IconButton><button className="top-avatar" onClick={() => navigate('profile')} type="button"><Avatar image="photo-1534528741775-53994a69daeb" name="Ada Okafor"/></button></div></header>
-      {preview && <div className="preview-banner"><span>LOCAL PREVIEW</span> Sample content and local-only interactions. Your Ofsocio account data is not connected in this preview.<button onClick={onExit} type="button">{exitLabel || 'Exit preview'} <b>×</b></button></div>}
+      {preview && <div className="preview-banner"><span>LOCAL PREVIEW</span> Social features use sample content; your profile editor saves account details.<button onClick={onExit} type="button">{exitLabel || 'Exit preview'} <b>×</b></button></div>}
       {!preview && apiNotice && <div className="backend-notice" role="status">Backend notice: {apiNotice}</div>}
       <div className="workspace"><main className="main-column" aria-label={titles[view]}>
         {view === 'home' && <HomeView liked={liked} setLiked={setLiked} following={following} toggleFollowing={toggleFollowing} remotePosts={remotePosts} onCreatePost={accessToken && !preview ? createPost : undefined}/>}
@@ -375,7 +454,7 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel })
         {view === 'approvals' && (preview || capabilities.includes('kyc.read')) && <ApprovalView preview={preview} applications={approvalApplications} onReview={reviewKyc}/>}
         {view === 'support' && <SupportView/>}
         {view === 'faq' && <SupportView faqOnly/>}
-        {view === 'profile' && <ProfileView isPrivate={isPrivate} setIsPrivate={updatePrivacy} following={following}/>}
+        {view === 'profile' && <ProfileView profile={accountProfile} loading={profileLoading} error={profileError} onSave={saveProfile}/>}
         {view === 'security' && <CentreView/>}
         {view === 'privacy' && <CentreView privacy isPrivate={isPrivate} setIsPrivate={updatePrivacy}/>}
         {view === 'create' && <HomeView liked={liked} setLiked={setLiked} following={following} toggleFollowing={toggleFollowing} remotePosts={remotePosts} onCreatePost={accessToken && !preview ? createPost : undefined}/>}

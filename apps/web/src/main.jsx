@@ -273,6 +273,7 @@ function App() {
   return (
     <SocialShell
       preview
+      userId={session.user.id}
       onExit={signOut}
       exitLabel="Sign out"
     />
