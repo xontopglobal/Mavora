@@ -3,6 +3,7 @@ import './social.css';
 import { loadOwnProfile, saveOwnProfile, uploadOwnAvatar } from './lib/profileService';
 import BusinessView from './components/BusinessView';
 import GroupsView from './components/GroupsView';
+import CirclesView from './components/CirclesView';
 import { createFeedPost, listFeedPosts, togglePostAppreciation } from './lib/feedService';
 
 async function apiRequest() {
@@ -14,12 +15,6 @@ const navigation = [
   { section: 'COMMUNITIES', items: [['groups', '◫', 'Groups'], ['business', '◇', 'Business'] ] },
   { section: 'ACCOUNT', items: [['profile', '◍', 'Your profile'], ['membership', '✦', 'Membership'], ['kyc', '▧', 'Verification']] },
   { section: 'CARE', items: [['support', '?', 'AI Support'], ['faq', '≡', 'Help & FAQ'], ['security', '⌑', 'Security Centre'], ['privacy', '◈', 'Privacy Centre']] }
-];
-
-const people = [
-  { name: 'Nia Adebayo', detail: 'Designer · Accra', image: 'photo-1524504388940-b1c1722653e1' },
-  { name: 'Malik Bello', detail: 'Photographer · Lagos', image: 'photo-1500648767791-00dcc994a43e' },
-  { name: 'Emeka Obi', detail: 'Building in public', image: 'photo-1506794778202-cad84cf45f1d' }
 ];
 
 const initialMessages = [
@@ -102,10 +97,6 @@ function HomeView({ remotePosts = [], feedLoading, feedError, onRetry, onCreateP
         </article>;
       })}</div> : <div className="business-state panel">No published posts are available yet. Your posts will appear here after you share them.</div>}
   </>;
-}
-
-function FriendsView() {
-  return <><div className="view-heading"><div><div className="eyebrow">YOUR PEOPLE, YOUR PACE</div><h1>Circles</h1><p>People search and follow requests are not connected yet.</p></div><button className="button primary" type="button" disabled title="People search is not connected yet.">Find people <span>⌕</span></button></div><div className="business-state panel">No sample members are shown. People discovery will appear here when its backend flow is connected.</div></>;
 }
 
 function MessagesView() {
@@ -468,11 +459,11 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel, u
 
   return <div className="ofsocio-app">
     <Sidebar view={view} setView={navigate} onSignOut={onExit} preview={preview} exitLabel={exitLabel} staffAccess={capabilities.includes('kyc.read')} currentProfile={accountProfile}/>
-    <div className="app-body"><header className="topbar"><button className="mobile-brand" onClick={() => navigate('home')} type="button">OFSOCIO</button><div className="global-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search people, circles and ideas" aria-label="Search Ofsocio" disabled title="People search is not connected yet."/><kbd>⌘ K</kbd></div><div className="top-actions"><button className="top-create" onClick={() => navigate('create')} type="button"><span>＋</span> Create</button><IconButton label="Notifications" className="notification-button">◌<i/></IconButton><button className="top-avatar" onClick={() => navigate('profile')} type="button"><Avatar image={currentProfileAvatar(accountProfile)} name={currentProfileName(accountProfile)}/></button></div></header>
+    <div className="app-body"><header className="topbar"><button className="mobile-brand" onClick={() => navigate('home')} type="button">OFSOCIO</button><div className="global-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') navigate('friends'); }} placeholder="Search people" aria-label="Search people"/><kbd>↵</kbd></div><div className="top-actions"><button className="top-create" onClick={() => navigate('create')} type="button"><span>＋</span> Create</button><IconButton label="Notifications" className="notification-button">◌<i/></IconButton><button className="top-avatar" onClick={() => navigate('profile')} type="button"><Avatar image={currentProfileAvatar(accountProfile)} name={currentProfileName(accountProfile)}/></button></div></header>
       {!preview && apiNotice && <div className="backend-notice" role="status">Backend notice: {apiNotice}</div>}
       <div className="workspace"><main className="main-column" aria-label={titles[view]}>
         {view === 'home' && <HomeView remotePosts={remotePosts} feedLoading={feedLoading} feedError={feedError} onRetry={refreshFeed} onCreatePost={publishPost} onToggleLike={appreciatePost} currentProfile={accountProfile}/>}
-        {view === 'friends' && <FriendsView/>}
+        {view === 'friends' && <CirclesView userId={userId} search={search} onSearchChange={setSearch}/>}
         {view === 'messages' && <MessagesView/>}
         {view === 'groups' && <GroupsView userId={userId}/>}
         {view === 'reels' && <ReelsView/>}
