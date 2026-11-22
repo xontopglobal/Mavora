@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './social.css';
 import { loadOwnProfile, saveOwnProfile, uploadOwnAvatar } from './lib/profileService';
 import BusinessView from './components/BusinessView';
+import GroupsView from './components/GroupsView';
+import { createFeedPost, listFeedPosts, togglePostAppreciation } from './lib/feedService';
 
 async function apiRequest() {
   throw new Error('Backend features are not connected in this UI preview.');
@@ -28,87 +30,91 @@ const initialMessages = [
 
 const imageUrl = (id, width = 120, height = width) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&h=${height}&q=82`;
 const currentProfileName = (profile) => profile?.display_name?.trim() || profile?.username || 'Ofsocio member';
-const currentProfileAvatar = (profile) => profile?.avatar_display_url || (/^https?:\/\//i.test(profile?.avatar_url || '') ? profile.avatar_url : 'photo-1534528741775-53994a69daeb');
+const currentProfileAvatar = (profile) => profile?.avatar_display_url || (/^https?:\/\//i.test(profile?.avatar_url || '') ? profile.avatar_url : null);
 
 function Avatar({ image, name, size = 'normal' }) {
-  const source = image?.startsWith('https://') ? image : imageUrl(image);
-  return <img className={`avatar ${size}`} src={source} alt={name} />;
+  const source = /^https?:\/\//i.test(image || '') ? image : image?.startsWith('photo-') ? imageUrl(image) : null;
+  if (source) return <img className={`avatar ${size}`} src={source} alt={name} />;
+  const initials = (name || 'Ofsocio member').trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+  return <span className={`avatar avatar-fallback ${size}`} aria-label={name || 'Ofsocio member'}>{initials}</span>;
 }
 
 function IconButton({ children, label, className = '' }) {
-  return <button className={`icon-button ${className}`} type="button" aria-label={label} title={label}>{children}</button>;
+  return <button className={`icon-button ${className}`} type="button" aria-label={label} title={`${label} is not connected yet.`} disabled>{children}</button>;
 }
 
-function HomeView({ liked, setLiked, following, toggleFollowing, remotePosts = null, onCreatePost, currentProfile }) {
+function HomeView({ remotePosts = [], feedLoading, feedError, onRetry, onCreatePost, onToggleLike, currentProfile, focusComposer = false }) {
   const [draft, setDraft] = useState('');
-  const [posts, setPosts] = useState([
-    { id: 1, name: 'Ada Okafor', location: 'Lagos, Nigeria · 18 min ago', image: 'photo-1534528741775-53994a69daeb', text: 'Found a little quiet between the city and the sea. Keeping this one. #weekendnotes', photo: 'photo-1473116763249-2faaef81ccda', caption: 'Somewhere on the coast', likes: '284', replies: '32' },
-    { id: 2, name: 'Malik Bello', location: 'Yaba, Lagos · 1 hr ago', image: 'photo-1500648767791-00dcc994a43e', text: 'A few frames from a morning that started without a plan.', photo: 'photo-1519608487953-e999c86e7455', caption: 'Before the city woke', likes: '96', replies: '14' }
-  ]);
+  const [publishing, setPublishing] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [noticeError, setNoticeError] = useState(false);
+  const [liking, setLiking] = useState(null);
+  const posts = remotePosts || [];
 
-  function publish() {
-    if (!draft.trim()) return;
-    if (onCreatePost) {
-      const content = draft.trim();
+  async function publish() {
+    const content = draft.trim();
+    if (!content || publishing) return;
+    setPublishing(true);
+    setNotice('');
+    setNoticeError(false);
+    try {
+      await onCreatePost(content);
       setDraft('');
-      onCreatePost(content);
-      return;
+      setNotice('Your post was shared.');
+    } catch (error) {
+      setNotice(error.message || 'Your post could not be shared.');
+      setNoticeError(true);
+    } finally {
+      setPublishing(false);
     }
-    setPosts([{ id: Date.now(), name: currentProfileName(currentProfile), location: 'Just now', image: currentProfileAvatar(currentProfile), text: draft.trim(), photo: 'photo-1473116763249-2faaef81ccda', caption: 'Shared with your circle', likes: '0', replies: '0' }, ...posts]);
-    setDraft('');
   }
 
-  const visiblePosts = remotePosts === null ? posts : remotePosts.map((post) => ({
-    id: post.id,
-    name: post.author?.display_name || post.author?.username || 'Ofsocio member',
-    location: post.createdAt ? new Date(post.createdAt).toLocaleString() : 'Recently',
-    image: post.author?.avatar_url || 'photo-1534528741775-53994a69daeb',
-    text: post.body || '',
-    photo: 'photo-1473116763249-2faaef81ccda',
-    photoUrl: post.mediaUrls?.[0] || null,
-    caption: post.mediaUrls?.length ? 'Shared with your circle' : '',
-    likes: '0',
-    replies: '0'
-  }));
+  async function appreciate(postId) {
+    if (liking) return;
+    setLiking(postId);
+    setNotice('');
+    setNoticeError(false);
+    try {
+      await onToggleLike(postId);
+    } catch (error) {
+      setNotice(error.message || 'Appreciation could not be saved.');
+      setNoticeError(true);
+    } finally {
+      setLiking(null);
+    }
+  }
 
   return <>
-    <div className="view-heading"><div><div className="eyebrow">WEDNESDAY, NOVEMBER 11</div><h1>The near &amp; now</h1><p>Your people, in their own words.</p></div><span className="live-mark"><i /> YOUR CIRCLE</span></div>
-    <div className="stories-strip"><div className="story create-story"><span className="story-ring add-ring">＋</span><span>Your story</span></div>{people.map((person, index) => <button className="story" key={person.name} type="button"><span className={`story-ring tone-${index}`}><Avatar image={person.image} name={person.name} /></span><span>{person.name.split(' ')[0]}</span></button>)}</div>
-    <section className="composer panel"><Avatar image="photo-1534528741775-53994a69daeb" name="You" /><div className="composer-main"><textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="What would you like to share?" aria-label="Write a post" /><div className="composer-actions"><div className="composer-tools"><button type="button">▧ <span>Photo</span></button><button type="button">◷ <span>Story</span></button><button type="button">◈ <span>Audience: Friends</span></button></div><button className="button primary small-button" type="button" onClick={publish} disabled={!draft.trim()}>Share <span>↗</span></button></div></div></section>
-    <div className="feed-toolbar"><div><span className="eyebrow">YOUR FEED</span><h2>From your circles</h2></div><button type="button" className="quiet-button">For you <span>⌄</span></button></div>
-    <div className="feed-list">{visiblePosts.map((post) => <article className="post panel" key={post.id}>
-      <header className="post-header"><Avatar image={post.image} name={post.name} /><div className="post-by"><strong>{post.name} <span className="verified">✦</span></strong><span>{post.location}</span></div><button className="more-button" type="button" aria-label="Post options">•••</button></header>
-      <p className="post-copy">{post.text}</p>{(post.photoUrl || post.caption) && <div className="post-image"><img src={post.photoUrl || imageUrl(post.photo, 900, 600)} alt={post.caption} />{post.caption && <span className="image-caption">{post.caption}</span>}</div>}
-      <div className="post-reactions"><span className="reaction-stack"><i>♥</i><i>✦</i></span><span>{post.likes} appreciations</span><span className="reply-count">{post.replies} replies</span></div>
-      <div className="post-actions"><button type="button" className={liked.includes(post.id) ? 'is-liked' : ''} onClick={() => setLiked((current) => current.includes(post.id) ? current.filter((id) => id !== post.id) : [...current, post.id])}><span>♡</span> Appreciate</button><button type="button"><span>◯</span> Reply</button><button type="button"><span>↗</span> Share</button><button type="button" className="save-action"><span>◇</span> Save</button></div>
-    </article>)}</div>
-    <aside className="mobile-suggestions panel"><div className="section-title"><div><span className="eyebrow">GOOD PEOPLE, NEARBY</span><h2>Meet your next circle</h2></div><button className="text-link" type="button">See all</button></div>{people.slice(0, 2).map((person) => <div className="suggestion-row" key={person.name}><Avatar image={person.image} name={person.name} /><div className="suggestion-info"><strong>{person.name}</strong><span>{person.detail}</span></div><button type="button" className="follow-mini" onClick={() => toggleFollowing(person.name)}>{following.includes(person.name) ? 'Following' : '＋ Follow'}</button></div>)}</aside>
+    <div className="view-heading"><div><div className="eyebrow">YOUR OFSOCIO COMMUNITY</div><h1>The near &amp; now</h1><p>Posts from members, loaded from your account.</p></div><span className="live-mark"><i /> LIVE FEED</span></div>
+    <div className="stories-strip"><div className="story create-story" aria-label="Stories are not connected yet"><span className="story-ring add-ring">＋</span><span>Stories soon</span></div></div>
+    <section className="composer panel"><Avatar image={currentProfile?.avatar_display_url} name={currentProfileName(currentProfile)} /><div className="composer-main"><textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="What would you like to share?" aria-label="Write a post" maxLength={5000} autoFocus={focusComposer} /><div className="composer-actions"><div className="composer-tools"><button type="button" disabled title="Photo posts are not connected yet.">▧ <span>Photo</span></button><button type="button" disabled title="Stories are not connected yet.">◷ <span>Story</span></button><button type="button" disabled title="Posts are currently shared publicly.">◈ <span>Audience: Public</span></button></div><button className="button primary small-button" type="button" onClick={() => void publish()} disabled={!draft.trim() || publishing}>{publishing ? 'Sharing…' : 'Share'} <span>↗</span></button></div></div></section>
+    {notice && <p className={noticeError ? 'profile-error' : 'profile-save-message'} role="status" aria-live="polite">{notice}</p>}
+    <div className="feed-toolbar"><div><span className="eyebrow">YOUR FEED</span><h2>Published posts</h2></div><button type="button" className="quiet-button" disabled title="Feed sorting is not connected yet.">For you <span>⌄</span></button></div>
+    {feedError && <div className="business-feedback error" role="alert">{feedError} <button className="text-link" type="button" onClick={() => void onRetry()}>Retry</button></div>}
+    {feedLoading ? <div className="business-state panel" role="status">Loading your feed…</div>
+      : posts.length ? <div className="feed-list">{posts.map((post) => {
+        const authorName = post.author?.display_name || post.author?.username || 'Ofsocio member';
+        return <article className="post panel" key={post.id}>
+          <header className="post-header"><Avatar image={post.author?.avatar_url} name={authorName} /><div className="post-by"><strong>{authorName}</strong><span>{post.created_at ? new Date(post.created_at).toLocaleString() : 'Recently'} · {post.visibility}</span></div><button className="more-button" type="button" aria-label="Post options" disabled title="Post options are not connected yet.">•••</button></header>
+          <p className="post-copy">{post.body}</p>{post.media_urls?.filter((url) => /^https?:\/\//i.test(url)).map((url) => <div className="post-image" key={url}><img src={url} alt="Post attachment" /></div>)}
+          <div className="post-reactions"><span className="reaction-stack"><i>♥</i></span><span>{post.appreciation_count || 0} appreciations</span><span className="reply-count">{post.reply_count || 0} replies</span></div>
+          <div className="post-actions"><button type="button" className={post.appreciated_by_me ? 'is-liked' : ''} onClick={() => void appreciate(post.id)} disabled={liking === post.id}><span>♡</span>{liking === post.id ? 'Saving…' : 'Appreciate'}</button><button type="button" disabled title="Replies are not connected yet."><span>◯</span> Reply</button><button type="button" disabled title="Sharing is not connected yet."><span>↗</span> Share</button><button type="button" className="save-action" disabled title="Saved posts are not connected yet."><span>◇</span> Save</button></div>
+        </article>;
+      })}</div> : <div className="business-state panel">No published posts are available yet. Your posts will appear here after you share them.</div>}
   </>;
 }
 
-function FriendsView({ following, toggleFollowing }) {
-  const [tab, setTab] = useState('Discover');
-  return <><div className="view-heading"><div><div className="eyebrow">YOUR PEOPLE, YOUR PACE</div><h1>Circles</h1><p>Friendship and following, kept intentionally separate.</p></div><button className="button primary">Find people <span>⌕</span></button></div><div className="segmented">{['Discover', 'Requests', 'Following', 'Followers'].map((item) => <button className={tab === item ? 'active' : ''} onClick={() => setTab(item)} key={item} type="button">{item}{item === 'Requests' && <b>2</b>}</button>)}</div><div className="people-grid">{(tab === 'Requests' ? people.slice(1) : people).map((person, index) => <article className="person-card panel" key={person.name}><div className={`person-cover cover-${index}`} /><Avatar image={person.image} name={person.name} size="large" /><div className="person-info"><h3>{person.name}</h3><span>{person.detail}</span><p>{index === 0 ? 'Collecting places, people and small moments.' : 'Good conversations start somewhere.'}</p><div className="mutuals"><span className="mini-faces">●●●</span> {12 + index * 6} mutuals</div><button className={`button ${following.includes(person.name) ? 'outline' : 'primary'} full-button`} onClick={() => toggleFollowing(person.name)} type="button">{following.includes(person.name) ? 'Following' : tab === 'Requests' ? 'Accept request' : '＋ Follow'}</button>{tab === 'Requests' && <button className="text-button" type="button">Decline</button>}</div></article>)}</div></>;
+function FriendsView() {
+  return <><div className="view-heading"><div><div className="eyebrow">YOUR PEOPLE, YOUR PACE</div><h1>Circles</h1><p>People search and follow requests are not connected yet.</p></div><button className="button primary" type="button" disabled title="People search is not connected yet.">Find people <span>⌕</span></button></div><div className="business-state panel">No sample members are shown. People discovery will appear here when its backend flow is connected.</div></>;
 }
 
 function MessagesView() {
-  const [selected, setSelected] = useState(initialMessages[0]);
-  const [draft, setDraft] = useState('');
-  const [sent, setSent] = useState([]);
-  return <><div className="view-heading"><div><div className="eyebrow">PRIVATE BY DESIGN</div><h1>Messages</h1><p>Good conversations, in a space of their own.</p></div><IconButton label="New message">＋</IconButton></div><div className="message-layout panel"><aside className="conversation-list"><div className="conversation-search"><span>⌕</span><input placeholder="Find a conversation" aria-label="Find a conversation" /></div>{initialMessages.map((message) => <button className={`conversation ${selected.name === message.name ? 'active' : ''}`} onClick={() => setSelected(message)} key={message.name} type="button"><Avatar image={message.image} name={message.name} /><span className="conversation-copy"><strong>{message.name}</strong><small>{message.text}</small></span><time>{message.time}</time></button>)}</aside><section className="chat-window"><div className="chat-heading"><Avatar image={selected.image} name={selected.name} /><div><strong>{selected.name}</strong><span><i /> Active recently</span></div><IconButton label="Conversation details">···</IconButton></div><div className="chat-history"><div className="day-marker">TODAY</div><div className="bubble received">Hey, I sent you the studio photos. The light came out beautifully.</div><div className="bubble sent">Just saw them. That afternoon glow is everything.</div><div className="bubble received">We should do another walk this weekend ✨</div>{sent.map((message, index) => <div className="bubble sent" key={index}>{message}</div>)}</div><form className="message-compose" onSubmit={(event) => { event.preventDefault(); if (draft.trim()) { setSent([...sent, draft.trim()]); setDraft(''); } }}><button type="button" aria-label="Add attachment">＋</button><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Write a message" /><button className="send-button" type="submit" aria-label="Send message">↗</button></form></section></div></>;
-}
-
-function GroupsView() {
-  const [joined, setJoined] = useState([]);
-  const groups = [{ title: 'The Sunday Table', kind: 'OPEN CIRCLE', members: '2.4k members', description: 'Food stories, family recipes and the places that bring us together.', image: 'photo-1517248135467-4c7edcad34c4' }, { title: 'Build in the Open', kind: 'REQUEST TO JOIN', members: '864 members', description: 'A thoughtful corner for makers, founders and curious minds.', image: 'photo-1521737711867-e3b97375f902' }, { title: 'Lagos Photo Walks', kind: 'OPEN CIRCLE', members: '1.2k members', description: 'A community-led map of small moments across the city.', image: 'photo-1473116763249-2faaef81ccda' }];
-  return <><div className="view-heading"><div><div className="eyebrow">GATHER AROUND SOMETHING</div><h1>Groups</h1><p>Communities shaped by what you care about.</p></div><button className="button primary">＋ Create a group</button></div><div className="filter-row"><button className="filter active">For you</button><button className="filter">Joined</button><button className="filter">Near me</button><button className="quiet-button filter-search">⌕ Search groups</button></div><div className="group-grid">{groups.map((group, index) => <article className="group-card panel" key={group.title}><div className="group-image"><img src={imageUrl(group.image, 700, 360)} alt="" /><span className="group-kind">{group.kind}</span></div><div className="group-content"><div className="eyebrow">{group.members}</div><h2>{group.title}</h2><p>{group.description}</p><div className="group-footer"><span className="mini-faces">●●●</span><button className={`button ${joined.includes(group.title) ? 'outline' : 'primary'} small-button`} onClick={() => setJoined(joined.includes(group.title) ? joined.filter((item) => item !== group.title) : [...joined, group.title])}>{joined.includes(group.title) ? 'Joined' : index === 1 ? 'Request to join' : 'Join circle'}</button></div></div></article>)}</div></>;
+  return <><div className="view-heading"><div><div className="eyebrow">PRIVATE BY DESIGN</div><h1>Messages</h1><p>Messaging is not connected to the backend yet.</p></div><IconButton label="New message">＋</IconButton></div><div className="business-state panel">Your inbox will show real conversations when messaging is connected. No sample messages are displayed.</div></>;
 }
 
 function ReelsView() {
-  const [playing, setPlaying] = useState(false);
-  return <><div className="view-heading"><div><div className="eyebrow">SHORT STORIES, FULL FEELING</div><h1>Reels</h1><p>Made by your circles, not an endless algorithm.</p></div><button className="button outline">Following <span>⌄</span></button></div><div className="reel-stage"><img src={imageUrl('photo-1470252649378-9c29740c9fa8', 1000, 1000)} alt="Warm light over a misty mountain valley" /><div className="reel-shade"/><button className="play-reel" type="button" onClick={() => setPlaying(!playing)} aria-label={playing ? 'Pause reel' : 'Play reel'}>{playing ? 'Ⅱ' : '▶'}</button><div className="reel-caption"><span className="eyebrow">OFSOCIO ORIGINAL · 00:18</span><h2>First light, before the world catches up.</h2><div className="reel-creator"><Avatar image="photo-1500648767791-00dcc994a43e" name="Malik Bello" /><div><strong>Malik Bello</strong><span>Accra · 2 hours ago</span></div><button className="follow-mini" type="button">＋ Follow</button></div></div><div className="reel-actions"><button type="button">♡<small>1.8k</small></button><button type="button">◯<small>86</small></button><button type="button">↗<small>Share</small></button><button type="button">◇<small>Save</small></button></div></div></>;
+  return <><div className="view-heading"><div><div className="eyebrow">SHORT STORIES, FULL FEELING</div><h1>Reels</h1><p>Reels are not connected to the backend yet.</p></div><button className="button outline" type="button" disabled title="Reel filters are not connected yet.">Following <span>⌄</span></button></div><div className="business-state panel">Published reels will appear here when the reels feature is connected.</div></>;
 }
-
 
 
 function MembershipView({ catalog, profile, onCheckout }) {
@@ -124,21 +130,17 @@ function MembershipView({ catalog, profile, onCheckout }) {
     const configuredPlan = catalog?.plans?.find((item) => item.code === plan.code);
     const price = catalog?.prices?.find((item) => item.plan_code === plan.code && item.country_code === countryCode && item.billing_period === billingPeriod && (!profile?.preferred_currency || item.currency === profile.preferred_currency));
     const priceLabel = plan.code === 'free' ? 'Always free' : price ? `${price.currency} ${Number(price.amount).toLocaleString()} / ${billingPeriod}` : 'Regional pricing';
-    return <article className={`plan-card panel ${selected === plan.name ? 'selected' : ''}`} key={plan.code}><div className={`plan-symbol ${plan.color}`}>{plan.color === 'free' ? '○' : plan.color === 'premium' ? '✦' : '◇'}</div><span className="eyebrow">{configuredPlan ? `STAGE 0${configuredPlan.stage} · ${plan.stage.split('·')[1].trim().split(' ')[0]}` : plan.stage}</span><h2>{configuredPlan?.display_name || plan.name}</h2><p className="plan-price">{priceLabel}</p><ul>{plan.features.map((feature) => <li key={feature}><span>✓</span>{feature}</li>)}</ul><button className={`button ${plan.color === 'free' ? 'outline' : 'primary'} full-button`} onClick={() => { setSelected(plan.name); if (plan.code !== 'free') onCheckout?.(plan.code, billingPeriod); }} type="button">{plan.color === 'free' ? 'Current stage' : onCheckout ? price ? 'Continue to checkout' : 'Pricing unavailable' : selected === plan.name ? 'Selected for review' : 'Explore this stage'}</button></article>;
+    return <article className={`plan-card panel ${selected === plan.name ? 'selected' : ''}`} key={plan.code}><div className={`plan-symbol ${plan.color}`}>{plan.color === 'free' ? '○' : plan.color === 'premium' ? '✦' : '◇'}</div><span className="eyebrow">{configuredPlan ? `STAGE 0${configuredPlan.stage} · ${plan.stage.split('·')[1].trim().split(' ')[0]}` : plan.stage}</span><h2>{configuredPlan?.display_name || plan.name}</h2><p className="plan-price">{priceLabel}</p><ul>{plan.features.map((feature) => <li key={feature}><span>✓</span>{feature}</li>)}</ul><button className={`button ${plan.color === 'free' ? 'outline' : 'primary'} full-button`} type="button" disabled title="Membership actions are not connected yet.">{plan.color === 'free' ? 'Current stage' : onCheckout ? price ? 'Continue to checkout' : 'Pricing unavailable' : selected === plan.name ? 'Selected for review' : 'Explore this stage'}</button></article>;
   })}</div><div className="notice panel"><span>ⓘ</span><p>Payment integration is not connected. No checkout will start from this preview.</p></div></>;
 }
 
 function KycView({ applications = [], onSubmitApplication }) {
-  const [localStatuses, setLocalStatuses] = useState({});
-  const getStatus = (type) => applications.find((item) => item.application_type === type)?.status || localStatuses[type] || 'not_started';
-  const submit = (type) => {
-    if (onSubmitApplication) return onSubmitApplication(type);
-    setLocalStatuses((current) => ({ ...current, [type]: 'in_review' }));
-  };
+  const getStatus = (type) => applications.find((item) => item.application_type === type)?.status || 'not_started';
+  const submit = (type) => onSubmitApplication?.(type);
   const individualStatus = getStatus('individual');
   const businessStatus = getStatus('business');
   const statusLabel = (status) => status === 'not_started' ? 'Not started' : status.replaceAll('_', ' ');
-  return <><div className="view-heading"><div><div className="eyebrow">IDENTITY, HANDLED WITH CARE</div><h1>Verification</h1><p>Only required for selected services. Your documents are never collected in this preview.</p></div></div><div className="verification-layout"><section className="verification-card panel"><div className="verification-icon">▧</div><span className="eyebrow">INDIVIDUAL VERIFICATION</span><h2>Verify your identity</h2><p>Securely confirm your identity to access eligible Premium features. A vetted provider handles document checks in production.</p><div className="status-line"><span>Status</span><strong className={`status-pill ${individualStatus === 'not_started' ? '' : 'pending'}`}>{statusLabel(individualStatus)}</strong></div><button className="button primary full-button" onClick={() => submit('individual')} disabled={individualStatus === 'submitted' || individualStatus === 'in_review'}>{individualStatus === 'not_started' ? 'Start secure verification' : 'Application submitted'}</button><small>Provider, retention and regional availability are confirmed before launch.</small></section><section className="verification-card panel"><div className="verification-icon business-icon">◇</div><span className="eyebrow">BUSINESS VERIFICATION</span><h2>Verify an organisation</h2><p>Confirm your organisation and authorised representative before activating Business / Pro tools.</p><div className="status-line"><span>Status</span><strong className={`status-pill ${businessStatus === 'not_started' ? '' : 'pending'}`}>{statusLabel(businessStatus)}</strong></div><button className="button outline full-button" onClick={() => submit('business')} disabled={businessStatus === 'submitted' || businessStatus === 'in_review'}>Prepare business verification</button></section></div><div className="privacy-callout"><span>◈</span><p><strong>Minimal by design.</strong> Ofsocio stores the verification outcome and provider reference where possible, not raw identity documents.</p></div></>;
+  return <><div className="view-heading"><div><div className="eyebrow">IDENTITY, HANDLED WITH CARE</div><h1>Verification</h1><p>Only required for selected services. Your documents are never collected in this preview.</p></div></div><div className="verification-layout"><section className="verification-card panel"><div className="verification-icon">▧</div><span className="eyebrow">INDIVIDUAL VERIFICATION</span><h2>Verify your identity</h2><p>Securely confirm your identity to access eligible Premium features. A vetted provider handles document checks in production.</p><div className="status-line"><span>Status</span><strong className={`status-pill ${individualStatus === 'not_started' ? '' : 'pending'}`}>{statusLabel(individualStatus)}</strong></div><button className="button primary full-button" onClick={() => submit('individual')} disabled={!onSubmitApplication || individualStatus === 'submitted' || individualStatus === 'in_review'} title={!onSubmitApplication ? 'Verification is not connected yet.' : undefined}>{individualStatus === 'not_started' ? 'Start secure verification' : 'Application submitted'}</button><small>Provider, retention and regional availability are confirmed before launch.</small></section><section className="verification-card panel"><div className="verification-icon business-icon">◇</div><span className="eyebrow">BUSINESS VERIFICATION</span><h2>Verify an organisation</h2><p>Confirm your organisation and authorised representative before activating Business / Pro tools.</p><div className="status-line"><span>Status</span><strong className={`status-pill ${businessStatus === 'not_started' ? '' : 'pending'}`}>{statusLabel(businessStatus)}</strong></div><button className="button outline full-button" onClick={() => submit('business')} disabled={!onSubmitApplication || businessStatus === 'submitted' || businessStatus === 'in_review'} title={!onSubmitApplication ? 'Verification is not connected yet.' : undefined}>Prepare business verification</button></section></div><div className="privacy-callout"><span>◈</span><p><strong>Minimal by design.</strong> Ofsocio stores the verification outcome and provider reference where possible, not raw identity documents.</p></div></>;
 }
 
 function ApprovalView({ preview, applications = [], onReview }) {
@@ -161,13 +163,15 @@ function ApprovalView({ preview, applications = [], onReview }) {
 }
 
 function SupportView({ faqOnly = false }) {
-  const [question, setQuestion] = useState('');
-  const [asked, setAsked] = useState([]);
-  const faqs = ['How do I make my profile private?', 'How does identity verification work?', 'How do I report a suspicious account?'];
-  return <><div className="view-heading"><div><div className="eyebrow">{faqOnly ? 'ANSWERS, WITHOUT THE RUNAROUND' : 'HERE WHEN YOU NEED A HAND'}</div><h1>{faqOnly ? 'Help & FAQ' : 'AI Support'}</h1><p>{faqOnly ? 'Clear answers about your account, safety and membership.' : 'Ask about Ofsocio. For sensitive issues, we’ll help you reach a person.'}</p></div></div><div className="support-layout"><section className="support-main panel"><div className="support-head"><div className="support-spark">✦</div><div><strong>{faqOnly ? 'Frequently asked' : 'Ofsocio Support'}</strong><span>{faqOnly ? 'Sample FAQ · Preview content' : 'UI preview · AI and human support not connected'}</span></div></div>{faqOnly ? <div className="faq-list">{faqs.map((item, index) => <details key={item}><summary><span>0{index + 1}</span>{item}<b>＋</b></summary><p>{index === 0 ? 'Open Your profile, choose Privacy, then set account visibility to Private. Existing followers remain approved until you remove them.' : index === 1 ? 'Verification is required only for selected services. A reviewed provider handles identity checks; Ofsocio stores the minimum verification outcome needed.' : 'Open the account or content menu and choose Report. You can also block the account immediately from its profile.'}</p></details>)}</div> : <><div className="assistant-message"><span className="assistant-avatar">✦</span><p>Hi Ada. I can help you find settings, understand membership, or get support with a safety concern. What’s on your mind?</p></div>{asked.map((item, index) => <React.Fragment key={index}><div className="user-message">{item}</div><div className="assistant-message"><span className="assistant-avatar">✦</span><p>I can point you in the right direction. For account-specific or sensitive issues, please use the human support path in Security Centre.</p></div></React.Fragment>)}<div className="prompt-chips">{['Privacy settings', 'Premium plans', 'Report a scam'].map((item) => <button type="button" onClick={() => setAsked([...asked, item])} key={item}>{item} ↗</button>)}</div><form className="support-input" onSubmit={(event) => { event.preventDefault(); if (question.trim()) { setAsked([...asked, question.trim()]); setQuestion(''); } }}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask a question..."/><button type="submit" aria-label="Send question">↗</button></form><small className="support-note">AI-generated guidance can be wrong. It cannot decide KYC, fraud, account enforcement or payment disputes.</small></>}</section><aside className="support-sidebar panel"><span className="eyebrow">POPULAR TOPICS</span>{['Your account', 'Privacy & safety', 'Membership & billing', 'Groups & community'].map((item, index) => <button className="topic-link" key={item} type="button"><span>{['◍', '◈', '✦', '◫'][index]}</span>{item}<b>↗</b></button>)}<div className="human-help"><span>PERSONAL SUPPORT</span><strong>Need a human?</strong><p>Reach our support team for account-specific help.</p><button className="text-link" type="button">Open a support case ↗</button></div></aside></div></>;
+  const faqs = [
+    ['How do I make my profile private?', 'Privacy controls are not connected yet. Check this page again after account privacy settings are implemented.'],
+    ['How does identity verification work?', 'Verification is not connected yet. Ofsocio will explain the verified provider and data handling before enabling submissions.'],
+    ['How do I report a suspicious account?', 'Reporting tools are not connected yet. Please do not treat this prototype as a reporting channel.']
+  ];
+  return <><div className="view-heading"><div><div className="eyebrow">{faqOnly ? 'ANSWERS, WITHOUT THE RUNAROUND' : 'HERE WHEN YOU NEED A HAND'}</div><h1>{faqOnly ? 'Help & FAQ' : 'AI Support'}</h1><p>{faqOnly ? 'Help information currently available in Ofsocio.' : 'AI and human support are not connected yet.'}</p></div></div><section className="support-main panel">{faqOnly ? <div className="faq-list">{faqs.map(([question, answer], index) => <details key={question}><summary><span>0{index + 1}</span>{question}<b>＋</b></summary><p>{answer}</p></details>)}</div> : <div className="business-state">Support requests are not sent anywhere yet. For urgent issues, use the contact channel provided by the Ofsocio team.</div>}</section></>;
 }
 
-function ProfileView({ profile, loading, error, onSave, onUploadAvatar }) {
+function ProfileView({ profile, loading, error, onSave, onUploadAvatar, onRetry }) {
   const [tab, setTab] = useState('Posts');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -176,7 +180,7 @@ function ProfileView({ profile, loading, error, onSave, onUploadAvatar }) {
   const [messageError, setMessageError] = useState(false);
   const [draft, setDraft] = useState(null);
   const displayName = profile?.display_name?.trim() || profile?.username || 'Ofsocio member';
-  const avatar = profile?.avatar_display_url || (/^https?:\/\//i.test(profile?.avatar_url || '') ? profile.avatar_url : 'photo-1534528741775-53994a69daeb');
+  const avatar = profile?.avatar_display_url || (/^https?:\/\//i.test(profile?.avatar_url || '') ? profile.avatar_url : null);
 
   useEffect(() => {
     if (profile) setDraft({
@@ -245,10 +249,10 @@ function ProfileView({ profile, loading, error, onSave, onUploadAvatar }) {
       <div className="profile-editor-grid">{field('Display name', 'display_name', { maxLength: 80, required: true })}{field('Username', 'username', { maxLength: 30, required: true, pattern: '[A-Za-z0-9_.]{3,30}', title: 'Use 3–30 letters, numbers, periods, or underscores.' })}{field('Country code', 'country_code', { maxLength: 2, pattern: '[A-Za-z]{2}', title: 'Enter a two-letter country code.' })}{field('Preferred language', 'preferred_language', { maxLength: 10 })}{field('Preferred currency', 'preferred_currency', { maxLength: 3, pattern: '[A-Za-z]{3}', title: 'Enter a three-letter currency code.' })}{field('Timezone', 'timezone', { maxLength: 64 })}{field('Bio', 'bio', { multiline: true, maxLength: 280 })}</div>
       <div className="profile-editor-footer"><span className={messageError ? "profile-error" : "profile-save-message"} role="status" aria-live="polite">{message}</span><button className="button primary" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button></div>
     </form>}
-    {error && <p className="profile-error" role="alert">{error}</p>}
+    {error && <p className="profile-error" role="alert">{error} <button className="text-link" type="button" onClick={onRetry}>Retry</button></p>}
     {message && !editing && <p className={messageError ? 'profile-error' : 'profile-save-message'} role="status" aria-live="polite">{message}</p>}
 
-    <div className="profile-tabs">{['Posts', 'Stories', 'About', 'Friends'].map((item) => <button type="button" className={tab === item ? 'active' : ''} onClick={() => setTab(item)} key={item}>{item}</button>)}</div><div className="profile-content panel"><span className="eyebrow">{tab.toUpperCase()}</span><h2>{tab === 'About' ? 'Your profile details' : 'Your Ofsocio profile'}</h2><p>{tab === 'About' ? 'Your editable profile details are shown above.' : 'Profile posts, stories, and circle activity are not connected yet.'}</p></div></>;
+    <div className="profile-tabs">{['Posts', 'Stories', 'About', 'Friends'].map((item) => <button type="button" className={tab === item ? 'active' : ''} onClick={() => setTab(item)} key={item} disabled={item !== 'About'} title={item !== 'About' ? `${item} are not connected yet.` : undefined}>{item}</button>)}</div><div className="profile-content panel"><span className="eyebrow">{tab.toUpperCase()}</span><h2>Your profile details</h2><p>Your editable profile details are shown above. Posts, stories, and circle activity are not connected yet.</p></div></>;
 }
 function CentreView({ privacy = false, isPrivate, setIsPrivate }) {
   const [settings, setSettings] = useState({ twoFactor: true, loginAlerts: true, messageRequests: false, activityStatus: false, personalizedDiscovery: true });
@@ -263,21 +267,19 @@ function CentreView({ privacy = false, isPrivate, setIsPrivate }) {
     { title: 'Active sessions', detail: 'Review devices signed in to your account.', key: 'sessions', value: '2 devices' },
     { title: 'Connected apps', detail: 'Review services with account access.', key: 'apps', value: 'Manage' }
   ];
-  return <><div className="view-heading"><div><div className="eyebrow">{privacy ? 'YOUR DATA, YOUR DECISIONS' : 'A QUIETER KIND OF CONFIDENCE'}</div><h1>{privacy ? 'Privacy Centre' : 'Security Centre'}</h1><p>{privacy ? 'Understand and shape how Ofsocio uses your information.' : 'A clear view of your account protection and recent activity.'}</p></div></div><div className="centre-layout"><section className="settings-list panel">{groups.map((item) => <div className="setting-row" key={item.key}><div className="setting-icon">{privacy ? '◈' : '⌑'}</div><div className="setting-description"><strong>{item.title}</strong><span>{item.detail}</span></div>{item.key === 'data' || item.key === 'sessions' || item.key === 'apps' ? <button className="text-link" type="button">{item.value} ↗</button> : item.key === 'privateAccount' ? <button className={`switch ${isPrivate ? 'enabled' : ''}`} role="switch" aria-checked={isPrivate} aria-label={item.title} onClick={() => setIsPrivate(!isPrivate)}><i /></button> : <button className={`switch ${settings[item.key] ? 'enabled' : ''}`} role="switch" aria-checked={settings[item.key]} aria-label={item.title} onClick={() => setSettings({ ...settings, [item.key]: !settings[item.key] })}><i /></button>}</div>)}</section><aside className="security-card panel"><div className="security-emblem">{privacy ? '◈' : '✦'}</div><span className="eyebrow">{privacy ? 'PRIVACY SNAPSHOT' : 'ACCOUNT HEALTH'}</span><h2>{privacy ? 'You’re in control.' : 'Your account is in good shape.'}</h2><p>{privacy ? 'Review visibility and data choices at any time. Changes should be clear, reversible and respected.' : 'Security settings are a visual preview and are not connected or enforced.'}</p><button className="text-link">{privacy ? 'Read privacy notice' : 'Review recent activity'} ↗</button></aside></div><p className="disclaimer">Controls shown here are prototype interactions. Production settings must be enforced by authenticated server policies.</p></>;
+  return <><div className="view-heading"><div><div className="eyebrow">{privacy ? 'YOUR DATA, YOUR DECISIONS' : 'A QUIETER KIND OF CONFIDENCE'}</div><h1>{privacy ? 'Privacy Centre' : 'Security Centre'}</h1><p>{privacy ? 'Understand and shape how Ofsocio uses your information.' : 'A clear view of your account protection and recent activity.'}</p></div></div><div className="centre-layout"><section className="settings-list panel">{groups.map((item) => <div className="setting-row" key={item.key}><div className="setting-icon">{privacy ? '◈' : '⌑'}</div><div className="setting-description"><strong>{item.title}</strong><span>{item.detail}</span></div>{item.key === 'data' || item.key === 'sessions' || item.key === 'apps' ? <button className="text-link" type="button" disabled title={`${item.title} is not connected yet.`}>{item.value} ↗</button> : item.key === 'privateAccount' ? <button className={`switch ${isPrivate ? 'enabled' : ''}`} role="switch" aria-checked={isPrivate} aria-label={item.title} onClick={() => setIsPrivate?.(!isPrivate)} disabled={!setIsPrivate} title="Account privacy settings are not connected yet."><i /></button> : <button className={`switch ${settings[item.key] ? 'enabled' : ''}`} role="switch" aria-checked={settings[item.key]} aria-label={item.title} onClick={() => setSettings({ ...settings, [item.key]: !settings[item.key] })} disabled title="This security setting is not connected yet."><i /></button>}</div>)}</section><aside className="security-card panel"><div className="security-emblem">{privacy ? '◈' : '✦'}</div><span className="eyebrow">{privacy ? 'PRIVACY SNAPSHOT' : 'ACCOUNT HEALTH'}</span><h2>{privacy ? 'You’re in control.' : 'Your account is in good shape.'}</h2><p>{privacy ? 'Review visibility and data choices at any time. Changes should be clear, reversible and respected.' : 'Security settings are a visual preview and are not connected or enforced.'}</p><button className="text-link" type="button" disabled title="This link is not available yet.">{privacy ? 'Read privacy notice' : 'Review recent activity'} ↗</button></aside></div><p className="disclaimer">Controls shown here are prototype interactions. Production settings must be enforced by authenticated server policies.</p></>;
 }
 
 function Sidebar({ view, setView, onSignOut, preview, exitLabel, staffAccess, currentProfile }) {
-  return <aside className="desktop-sidebar"><a className="wordmark" href="#home" onClick={(event) => { event.preventDefault(); setView('home'); }}>OFSOCIO<small>social</small></a><button className="account-chip" type="button"><Avatar image={currentProfileAvatar(currentProfile)} name={currentProfileName(currentProfile)}/><span><strong>{currentProfileName(currentProfile)}</strong><small>{preview ? 'Local preview' : 'Your account'}</small></span><b>⌄</b></button><div className="side-nav">{navigation.map((group) => <div className="nav-group" key={group.section}><div className="nav-caption">{group.section}</div>{group.items.map(([id, icon, label]) => <button className={`side-link ${view === id ? 'active' : ''}`} type="button" key={id} onClick={() => setView(id)}><span className="side-icon">{icon}</span>{label}{id === 'messages' && <i className="unread-dot"/>}</button>)}</div>)}{(preview || staffAccess) && <div className="nav-group"><div className="nav-caption">{preview ? 'STAFF PREVIEW' : 'STAFF WORKSPACE'}</div><button className={`side-link ${view === 'approvals' ? 'active' : ''}`} type="button" onClick={() => setView('approvals')}><span className="side-icon">⌑</span>Approval desk{preview && <span className="staff-badge">DEMO</span>}</button></div>}</div><div className="sidebar-bottom"><button className="side-link" onClick={() => setView('privacy')} type="button"><span className="side-icon">◈</span>Privacy settings</button><button className="side-link" onClick={onSignOut} type="button"><span className="side-icon">↗</span>{exitLabel || (preview ? 'Exit preview' : 'Sign out')}</button></div></aside>;
+  return <aside className="desktop-sidebar"><a className="wordmark" href="#home" onClick={(event) => { event.preventDefault(); setView('home'); }}>OFSOCIO<small>social</small></a><button className="account-chip" type="button" onClick={() => setView('profile')}><Avatar image={currentProfileAvatar(currentProfile)} name={currentProfileName(currentProfile)}/><span><strong>{currentProfileName(currentProfile)}</strong><small>{preview ? 'Local preview' : 'Your account'}</small></span><b>⌄</b></button><div className="side-nav">{navigation.map((group) => <div className="nav-group" key={group.section}><div className="nav-caption">{group.section}</div>{group.items.map(([id, icon, label]) => <button className={`side-link ${view === id ? 'active' : ''}`} type="button" key={id} onClick={() => setView(id)}><span className="side-icon">{icon}</span>{label}{id === 'messages' && <i className="unread-dot"/>}</button>)}</div>)}{(preview || staffAccess) && <div className="nav-group"><div className="nav-caption">{preview ? 'STAFF PREVIEW' : 'STAFF WORKSPACE'}</div><button className={`side-link ${view === 'approvals' ? 'active' : ''}`} type="button" onClick={() => setView('approvals')}><span className="side-icon">⌑</span>Approval desk{preview && <span className="staff-badge">DEMO</span>}</button></div>}</div><div className="sidebar-bottom"><button className="side-link" onClick={() => setView('privacy')} type="button"><span className="side-icon">◈</span>Privacy settings</button><button className="side-link" onClick={onSignOut} type="button"><span className="side-icon">↗</span>{exitLabel || (preview ? 'Exit preview' : 'Sign out')}</button></div></aside>;
 }
 
-function RightRail({ view, toggleFollowing, following, currentProfile }) {
-  return <aside className="right-rail"><div className="rail-block profile-nudge"><div className="rail-heading"><span className="eyebrow">YOUR SPACE</span><button type="button" className="text-link" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'profile' }))}>Edit</button></div><div className="mini-profile"><Avatar image={currentProfileAvatar(currentProfile)} name={currentProfileName(currentProfile)} size="large"/><div><strong>{currentProfileName(currentProfile)}</strong><span>{currentProfile?.country_code?.trim() || 'Your profile'}</span></div></div><div className="profile-progress"><div><span>Profile</span><strong>72%</strong></div><div className="progress-track"><i/></div><small>Add a few details to help your circles find you.</small></div></div><div className="rail-block"><div className="rail-heading"><div><span className="eyebrow">GOOD PEOPLE</span><h3>Suggested for you</h3></div><button type="button" className="text-link">All</button></div>{people.map((person) => <div className="suggested-person" key={person.name}><Avatar image={person.image} name={person.name}/><div><strong>{person.name}</strong><span>{person.detail}</span></div><button type="button" className="plus-follow" onClick={() => toggleFollowing(person.name)} aria-label={following.includes(person.name) ? `Unfollow ${person.name}` : `Follow ${person.name}`}>{following.includes(person.name) ? '✓' : '＋'}</button></div>)}</div><div className="rail-promo"><span className="promo-star">✦</span><span className="eyebrow">A LITTLE MORE ROOM TO GROW</span><h3>Make more of what you share.</h3><p>Explore creator tools with Ofsocio Premium.</p><button type="button" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'membership' }))}>Explore Premium ↗</button></div><footer className="rail-footer">About · Community · Privacy · Terms<br/>© 2026 Ofsocio Social</footer></aside>;
+function RightRail({ currentProfile }) {
+  return <aside className="right-rail"><div className="rail-block profile-nudge"><div className="rail-heading"><span className="eyebrow">YOUR SPACE</span><button type="button" className="text-link" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'profile' }))}>Edit</button></div><div className="mini-profile"><Avatar image={currentProfileAvatar(currentProfile)} name={currentProfileName(currentProfile)} size="large"/><div><strong>{currentProfileName(currentProfile)}</strong><span>{currentProfile?.country_code?.trim() || 'Your profile'}</span></div></div><div className="profile-progress"><div><span>Profile</span><strong>Saved</strong></div><div className="progress-track"><i/></div><small>Your profile details are stored in your account.</small></div></div><div className="rail-block"><div className="rail-heading"><div><span className="eyebrow">GOOD PEOPLE</span><h3>Suggested for you</h3></div></div><div className="business-state">Member suggestions are not connected yet.</div></div><footer className="rail-footer">About · Community · Privacy · Terms<br/>© 2026 Ofsocio Social</footer></aside>;
 }
 
 export default function SocialShell({ preview, onExit, accessToken, exitLabel, userId }) {
   const [view, setView] = useState('home');
-  const [liked, setLiked] = useState([]);
-  const [following, setFollowing] = useState(['Nia Adebayo']);
   const [isPrivate, setIsPrivate] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [search, setSearch] = useState('');
@@ -285,7 +287,10 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel, u
   const [accountProfile, setAccountProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState('');
-  const [remotePosts, setRemotePosts] = useState(null);
+  const profileRetryInFlight = useRef(false);
+  const [remotePosts, setRemotePosts] = useState([]);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [feedError, setFeedError] = useState('');
   const [membershipCatalog, setMembershipCatalog] = useState(null);
   const [kycApplications, setKycApplications] = useState([]);
   const [capabilities, setCapabilities] = useState([]);
@@ -315,41 +320,57 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel, u
     return savedProfile;
   }
 
-  useEffect(() => {
-    if (preview || !accessToken) {
-      setRemoteProfile(null);
-      setRemotePosts(null);
-      setMembershipCatalog(null);
-      setKycApplications([]);
-      setCapabilities([]);
-      setApprovalApplications([]);
-      return undefined;
+  async function retryProfile() {
+    if (!userId || profileRetryInFlight.current) return;
+    profileRetryInFlight.current = true;
+    setProfileError('');
+    setProfileLoading(true);
+    try {
+      const profile = await loadOwnProfile(userId);
+      setAccountProfile(profile);
+      setProfileError('');
+    } catch (error) {
+      setProfileError(error.message || 'Your profile could not be loaded.');
+    } finally {
+      profileRetryInFlight.current = false;
+      setProfileLoading(false);
     }
+  }
 
-    let active = true;
-    Promise.allSettled([
-      apiRequest('/api/me/security', accessToken),
-      apiRequest('/api/social/feed', accessToken),
-      apiRequest('/api/membership/plans', accessToken),
-      apiRequest('/api/me/capabilities', accessToken)
-    ]).then(([accountResult, feedResult, catalogResult, capabilityResult]) => {
-      if (!active) return;
-      const failures = [];
-      if (accountResult.status === 'fulfilled') {
-        setRemoteProfile(accountResult.value.profile);
-        setIsPrivate(Boolean(accountResult.value.profile?.is_private));
-        setKycApplications(accountResult.value.kycApplications || []);
-      } else failures.push(accountResult.reason.message);
-      if (feedResult.status === 'fulfilled') setRemotePosts(feedResult.value.posts || []);
-      else failures.push(feedResult.reason.message);
-      if (catalogResult.status === 'fulfilled') setMembershipCatalog(catalogResult.value);
-      else failures.push(catalogResult.reason.message);
-      if (capabilityResult.status === 'fulfilled') setCapabilities(capabilityResult.value.permissions || []);
-      else failures.push(capabilityResult.reason.message);
-      setApiNotice(failures[0] || '');
-    });
-    return () => { active = false; };
-  }, [accessToken, preview]);
+  async function refreshFeed() {
+    if (!userId) {
+      setRemotePosts([]);
+      setFeedError("Sign in to see your feed.");
+      setFeedLoading(false);
+      return;
+    }
+    setFeedLoading(true);
+    setFeedError("");
+    try {
+      setRemotePosts(await listFeedPosts(userId));
+    } catch (error) {
+      setFeedError(error.message || "Your feed could not be loaded.");
+    } finally {
+      setFeedLoading(false);
+    }
+  }
+
+  useEffect(() => { void refreshFeed(); }, [userId]);
+
+  async function publishPost(body) {
+    await createFeedPost(userId, body);
+    await refreshFeed();
+  }
+
+  async function appreciatePost(postId) {
+    const appreciated = await togglePostAppreciation(userId, postId);
+    setRemotePosts((current) => current.map((post) => post.id === postId ? {
+      ...post,
+      appreciated_by_me: appreciated,
+      appreciation_count: Math.max(0, (post.appreciation_count || 0) + (appreciated ? 1 : -1))
+    } : post));
+  }
+
 
   useEffect(() => {
     if (preview || !accessToken || view !== 'approvals' || !capabilities.includes('kyc.read')) return undefined;
@@ -364,23 +385,6 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel, u
     setView(next);
     setMobileMenu(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  async function updatePrivacy(nextValue) {
-    const previousValue = isPrivate;
-    setIsPrivate(nextValue);
-    setApiNotice('');
-    if (preview || !accessToken) return;
-    try {
-      const result = await apiRequest('/api/me/profile', accessToken, {
-        method: 'PATCH',
-        body: { is_private: nextValue }
-      });
-      setRemoteProfile((current) => ({ ...current, ...result.profile }));
-    } catch (error) {
-      setIsPrivate(previousValue);
-      setApiNotice(error.message);
-    }
   }
 
   async function createPost(body) {
@@ -460,32 +464,30 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel, u
     return () => window.removeEventListener('ofsocio:navigate', handler);
   }, []);
 
-  const toggleFollowing = (name) => setFollowing((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name]);
   const titles = { home: 'For you', friends: 'Circles', reels: 'Reels', messages: 'Messages', groups: 'Groups', business: 'Business', profile: 'Your profile', membership: 'Membership', kyc: 'Verification', approvals: 'Approval desk', support: 'AI Support', faq: 'Help & FAQ', security: 'Security Centre', privacy: 'Privacy Centre' };
 
   return <div className="ofsocio-app">
     <Sidebar view={view} setView={navigate} onSignOut={onExit} preview={preview} exitLabel={exitLabel} staffAccess={capabilities.includes('kyc.read')} currentProfile={accountProfile}/>
-    <div className="app-body"><header className="topbar"><button className="mobile-brand" onClick={() => navigate('home')} type="button">OFSOCIO</button><div className="global-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search people, circles and ideas" aria-label="Search Ofsocio"/><kbd>⌘ K</kbd></div><div className="top-actions"><button className="top-create" onClick={() => navigate('home')} type="button"><span>＋</span> Create</button><IconButton label="Notifications" className="notification-button">◌<i/></IconButton><button className="top-avatar" onClick={() => navigate('profile')} type="button"><Avatar image={currentProfileAvatar(accountProfile)} name={currentProfileName(accountProfile)}/></button></div></header>
-      {preview && <div className="preview-banner"><span>LOCAL PREVIEW</span> Social features use sample content; your profile editor saves account details.<button onClick={onExit} type="button">{exitLabel || 'Exit preview'} <b>×</b></button></div>}
+    <div className="app-body"><header className="topbar"><button className="mobile-brand" onClick={() => navigate('home')} type="button">OFSOCIO</button><div className="global-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search people, circles and ideas" aria-label="Search Ofsocio" disabled title="People search is not connected yet."/><kbd>⌘ K</kbd></div><div className="top-actions"><button className="top-create" onClick={() => navigate('create')} type="button"><span>＋</span> Create</button><IconButton label="Notifications" className="notification-button">◌<i/></IconButton><button className="top-avatar" onClick={() => navigate('profile')} type="button"><Avatar image={currentProfileAvatar(accountProfile)} name={currentProfileName(accountProfile)}/></button></div></header>
       {!preview && apiNotice && <div className="backend-notice" role="status">Backend notice: {apiNotice}</div>}
       <div className="workspace"><main className="main-column" aria-label={titles[view]}>
-        {view === 'home' && <HomeView liked={liked} setLiked={setLiked} following={following} toggleFollowing={toggleFollowing} remotePosts={remotePosts} onCreatePost={accessToken && !preview ? createPost : undefined} currentProfile={accountProfile}/>}
-        {view === 'friends' && <FriendsView following={following} toggleFollowing={toggleFollowing}/>}
+        {view === 'home' && <HomeView remotePosts={remotePosts} feedLoading={feedLoading} feedError={feedError} onRetry={refreshFeed} onCreatePost={publishPost} onToggleLike={appreciatePost} currentProfile={accountProfile}/>}
+        {view === 'friends' && <FriendsView/>}
         {view === 'messages' && <MessagesView/>}
-        {view === 'groups' && <GroupsView/>}
+        {view === 'groups' && <GroupsView userId={userId}/>}
         {view === 'reels' && <ReelsView/>}
         {view === 'business' && <BusinessView userId={userId}/>}
-        {view === 'membership' && <MembershipView catalog={membershipCatalog} profile={remoteProfile} onCheckout={accessToken && !preview ? startCheckout : undefined}/>}
-        {view === 'kyc' && <KycView applications={kycApplications} onSubmitApplication={accessToken && !preview ? submitKyc : undefined}/>}
+        {view === 'membership' && <MembershipView catalog={membershipCatalog} profile={remoteProfile}/>}
+        {view === 'kyc' && <KycView applications={kycApplications}/>}
         {view === 'approvals' && (preview || capabilities.includes('kyc.read')) && <ApprovalView preview={preview} applications={approvalApplications} onReview={reviewKyc}/>}
         {view === 'support' && <SupportView/>}
         {view === 'faq' && <SupportView faqOnly/>}
-        {view === 'profile' && <ProfileView profile={accountProfile} loading={profileLoading} error={profileError} onSave={saveProfile} onUploadAvatar={(file) => uploadOwnAvatar(userId, file).then((updated) => { setAccountProfile(updated); return updated; })}/>}
+        {view === 'profile' && <ProfileView profile={accountProfile} loading={profileLoading} error={profileError} onRetry={retryProfile} onSave={saveProfile} onUploadAvatar={(file) => uploadOwnAvatar(userId, file).then((updated) => { setAccountProfile(updated); return updated; })}/>}
         {view === 'security' && <CentreView/>}
-        {view === 'privacy' && <CentreView privacy isPrivate={isPrivate} setIsPrivate={updatePrivacy}/>}
-        {view === 'create' && <HomeView liked={liked} setLiked={setLiked} following={following} toggleFollowing={toggleFollowing} remotePosts={remotePosts} onCreatePost={accessToken && !preview ? createPost : undefined} currentProfile={accountProfile}/>}
-      </main><RightRail view={view} toggleFollowing={toggleFollowing} following={following} currentProfile={accountProfile}/></div>
-      <nav className="mobile-nav" aria-label="Primary navigation">{mobileItems.map(([id, icon, label]) => <button className={view === id || (id === 'create' && view === 'home') ? 'active' : ''} key={id} type="button" onClick={() => id === 'create' ? navigate('home') : navigate(id)}><span>{icon}</span>{label}</button>)}</nav>
+        {view === 'privacy' && <CentreView privacy isPrivate={isPrivate}/>}
+        {view === 'create' && <HomeView remotePosts={remotePosts} feedLoading={feedLoading} feedError={feedError} onRetry={refreshFeed} onCreatePost={publishPost} onToggleLike={appreciatePost} currentProfile={accountProfile} focusComposer/>}
+      </main><RightRail currentProfile={accountProfile}/></div>
+      <nav className="mobile-nav" aria-label="Primary navigation">{mobileItems.map(([id, icon, label]) => <button className={view === id ? 'active' : ''} key={id} type="button" onClick={() => navigate(id)}><span>{icon}</span>{label}</button>)}</nav>
       <button className="mobile-more" onClick={() => setMobileMenu(!mobileMenu)} type="button" aria-label="More sections">{mobileMenu ? '×' : '···'}</button>
       {mobileMenu && <div className="mobile-menu">{navigation.flatMap((group) => group.items).map(([id, icon, label]) => <button key={id} type="button" onClick={() => navigate(id)}><span>{icon}</span>{label}</button>)}{(preview || capabilities.includes('kyc.read')) && <button type="button" onClick={() => navigate('approvals')}><span>⌑</span>Approval desk</button>}</div>}
     </div>

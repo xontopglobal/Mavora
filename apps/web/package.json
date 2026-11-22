@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/lib/avatarValidation.test.js src/lib/businessValidation.test.js"
+    "test": "node --test src/lib/avatarValidation.test.js src/lib/avatarUploadFlow.test.js src/lib/businessValidation.test.js src/lib/profileBootstrap.test.js src/lib/groupValidation.test.js src/lib/feedValidation.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
