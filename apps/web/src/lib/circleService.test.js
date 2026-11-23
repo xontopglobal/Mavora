@@ -24,8 +24,10 @@ function fakeClient({ rpcResults = {}, tableResults = {} } = {}) {
         select(columns) { call.selection = columns; return builder; },
         delete() { call.operation = "delete"; return builder; },
         eq(column, value) { call.filters.push([column, value]); return builder; },
+        neq(column, value) { call.filters.push([`not-${column}`, value]); return builder; },
         in(column, values) { call.filters.push([column, values]); return builder; },
         order() { return builder; },
+        limit(value) { call.limit = value; return builder; },
         maybeSingle: async () => tableResultForCall(table),
         then(resolve, reject) { return Promise.resolve(tableResultForCall(table)).then(resolve, reject); }
       };
@@ -42,6 +44,25 @@ test("people search calls the backend with normalized text and excludes the sign
   const results = await createCircleService(client).searchPeople("auth-user", "  @other ");
   assert.deepEqual(results, [{ id: "other", username: "other" }]);
   assert.deepEqual(calls[0], { type: "rpc", name: "search_ofsocio_people", args: { p_query: "other" } });
+});
+
+test("suggestions use RLS-filtered profiles and exclude followed and pending members", async () => {
+  const { client, calls } = fakeClient({
+    rpcResults: { get_my_follow_requests: { data: [
+      { direction: "outgoing", profile_id: "pending-user" },
+      { direction: "incoming", profile_id: "incoming-user" }
+    ], error: null } },
+    tableResults: {
+      profiles: { data: [
+        { id: "followed-user" }, { id: "pending-user" }, { id: "visible-new-user" }, { id: "auth-user" }
+      ], error: null },
+      follows: { data: [{ followed_id: "followed-user" }], error: null }
+    }
+  });
+  const suggestions = await createCircleService(client).loadSuggestions("auth-user", 5);
+  assert.deepEqual(suggestions, [{ id: "visible-new-user" }]);
+  assert.deepEqual(calls.find((call) => call.table === "profiles").filters, [["not-id", "auth-user"]]);
+  assert.equal(calls.find((call) => call.table === "profiles").limit, 30);
 });
 
 test("service rejects a stale client identity before it calls the backend", async () => {

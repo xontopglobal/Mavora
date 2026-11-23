@@ -66,8 +66,22 @@ export async function createFeedPost(userId, value) {
     .insert({ author_id: user.id, body, visibility: "public", media_urls: [] })
     .select("id, author_id, body, media_urls, visibility, created_at")
     .single();
+  if (error?.code === "42501") {
+    throw new Error("Your account is not currently permitted to publish. Check your account eligibility or restrictions, then try again.");
+  }
   if (error) throw error;
   return data;
+}
+
+export async function getOwnPostingEligibility(userId) {
+  const user = await requireUser(userId);
+  const { data, error } = await supabase
+    .from("age_assurance")
+    .select("status")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.status || "not_started";
 }
 
 export async function togglePostAppreciation(userId, postId) {

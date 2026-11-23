@@ -5,7 +5,7 @@ import { uploadAvatarAndSetPointer } from "./avatarUploadFlow";
 
 const AVATAR_BUCKET = "avatars";
 const SIGNED_AVATAR_TTL_SECONDS = 60 * 60;
-const PROFILE_COLUMNS = "id, username, display_name, bio, country_code, preferred_language, preferred_currency, timezone, avatar_url, updated_at";
+const PROFILE_COLUMNS = "id, username, display_name, bio, country_code, preferred_language, preferred_currency, timezone, avatar_url, updated_at, is_private";
 
 async function requireCurrentUser(expectedUserId) {
   if (!supabase) throw new Error("Supabase is not configured.");

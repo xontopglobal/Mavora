@@ -27,6 +27,31 @@ export function createCircleService(client = supabase) {
     return (rows || []).filter((profile) => profile.id !== user.id);
   }
 
+  async function loadSuggestions(expectedUserId, limit = 5) {
+    const user = await requireUser(expectedUserId);
+    const safeLimit = Math.max(1, Math.min(Number.isInteger(limit) ? limit : 5, 20));
+    const [profilesResponse, followingResponse, requestsResponse] = await Promise.all([
+      client.from("profiles")
+        .select(PROFILE_COLUMNS)
+        .neq("id", user.id)
+        .order("id", { ascending: true })
+        .limit(30),
+      client.from("follows")
+        .select("followed_id")
+        .eq("follower_id", user.id),
+      client.rpc("get_my_follow_requests")
+    ]);
+    const profiles = unwrap(profilesResponse) || [];
+    const following = unwrap(followingResponse) || [];
+    const requests = unwrap(requestsResponse) || [];
+    const excluded = new Set([
+      user.id,
+      ...following.map((row) => row.followed_id),
+      ...requests.filter((row) => row.direction === "outgoing").map((row) => row.profile_id)
+    ]);
+    return profiles.filter((profile) => profile.id && !excluded.has(profile.id)).slice(0, safeLimit);
+  }
+
   async function loadState(expectedUserId) {
     const user = await requireUser(expectedUserId);
     const [followingResponse, followersResponse, requestResponse] = await Promise.all([
@@ -105,11 +130,12 @@ export function createCircleService(client = supabase) {
     return deleted;
   }
 
-  return { searchPeople, loadState, followUser, cancelRequest, respondToRequest, unfollow };
+  return { searchPeople, loadSuggestions, loadState, followUser, cancelRequest, respondToRequest, unfollow };
 }
 
 const circleService = createCircleService();
 export const searchPeople = (...args) => circleService.searchPeople(...args);
+export const loadMemberSuggestions = (...args) => circleService.loadSuggestions(...args);
 export const loadCircleState = (...args) => circleService.loadState(...args);
 export const followUser = (...args) => circleService.followUser(...args);
 export const cancelFollowRequest = (...args) => circleService.cancelRequest(...args);

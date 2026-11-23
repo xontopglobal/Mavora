@@ -4,7 +4,8 @@ import { loadOwnProfile, saveOwnProfile, uploadOwnAvatar } from './lib/profileSe
 import BusinessView from './components/BusinessView';
 import GroupsView from './components/GroupsView';
 import CirclesView from './components/CirclesView';
-import { createFeedPost, listFeedPosts, togglePostAppreciation } from './lib/feedService';
+import { createFeedPost, getOwnPostingEligibility, listFeedPosts, togglePostAppreciation } from './lib/feedService';
+import { followUser, loadMemberSuggestions } from './lib/circleService';
 
 async function apiRequest() {
   throw new Error('Backend features are not connected in this UI preview.');
@@ -15,12 +16,6 @@ const navigation = [
   { section: 'COMMUNITIES', items: [['groups', '◫', 'Groups'], ['business', '◇', 'Business'] ] },
   { section: 'ACCOUNT', items: [['profile', '◍', 'Your profile'], ['membership', '✦', 'Membership'], ['kyc', '▧', 'Verification']] },
   { section: 'CARE', items: [['support', '?', 'AI Support'], ['faq', '≡', 'Help & FAQ'], ['security', '⌑', 'Security Centre'], ['privacy', '◈', 'Privacy Centre']] }
-];
-
-const initialMessages = [
-  { name: 'Nia Adebayo', text: 'Sent you the studio photos ✨', time: '2m', image: 'photo-1524504388940-b1c1722653e1' },
-  { name: 'Ofsocio Creators', text: 'Ada: Sunday photo walk?', time: '18m', image: 'photo-1517841905240-472988babdf9' },
-  { name: 'Malik Bello', text: 'That light was unreal.', time: '1h', image: 'photo-1500648767791-00dcc994a43e' }
 ];
 
 const imageUrl = (id, width = 120, height = width) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&h=${height}&q=82`;
@@ -34,11 +29,50 @@ function Avatar({ image, name, size = 'normal' }) {
   return <span className={`avatar avatar-fallback ${size}`} aria-label={name || 'Ofsocio member'}>{initials}</span>;
 }
 
+function MemberSuggestions({ userId }) {
+  const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(Boolean(userId));
+  const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState('');
+  const [notice, setNotice] = useState('');
+
+  async function refresh() {
+    if (!userId) { setMembers([]); setLoading(false); return; }
+    setLoading(true);
+    setError('');
+    try { setMembers(await loadMemberSuggestions(userId)); }
+    catch (loadError) { setError(loadError.message || 'Member suggestions could not be loaded.'); }
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => { void refresh(); }, [userId]);
+
+  async function follow(profile) {
+    if (busyId) return;
+    setBusyId(profile.id);
+    setError('');
+    setNotice('');
+    try {
+      const result = await followUser(userId, profile.id);
+      setMembers((current) => current.map((member) => member.id === profile.id ? { ...member, follow_state: result } : member));
+      setNotice(result === 'pending' ? 'Follow request sent.' : 'You are now following this member.');
+    } catch (followError) { setError(followError.message || 'The follow action could not be saved.'); }
+    finally { setBusyId(''); }
+  }
+
+  return <section className="member-suggestions panel" aria-labelledby="suggestions-title">
+    <div className="section-title"><div><span className="eyebrow">GOOD PEOPLE</span><h2 id="suggestions-title">Suggested members</h2></div><button type="button" className="text-link" onClick={() => void refresh()} disabled={loading}>Refresh</button></div>
+    {error && <p className="business-feedback error" role="alert">{error}</p>}
+    {notice && <p className="business-feedback success" role="status" aria-live="polite">{notice}</p>}
+    {loading ? <p className="business-state" role="status">Finding eligible members…</p> : members.length ? <div className="suggestion-grid">{members.map((profile) => <article className="suggestion-card" key={profile.id}><Avatar image={profile.avatar_url} name={profile.display_name || profile.username} /><div className="suggestion-copy"><strong>{profile.display_name || profile.username || 'Ofsocio member'}</strong><span>{profile.username ? `@${profile.username}` : profile.is_private ? 'Private account' : 'Ofsocio member'}</span></div>{profile.follow_state ? <span className="suggestion-state">{profile.follow_state === 'pending' ? 'Requested' : 'Following'}</span> : <button className="button outline small-button" type="button" onClick={() => void follow(profile)} disabled={Boolean(busyId)}>{busyId === profile.id ? 'Saving…' : profile.is_private ? 'Request' : 'Follow'}</button>}</article>)}</div> : <p className="business-state">No eligible member suggestions are available right now.</p>}
+  </section>;
+}
+
 function IconButton({ children, label, className = '' }) {
   return <button className={`icon-button ${className}`} type="button" aria-label={label} title={`${label} is not connected yet.`} disabled>{children}</button>;
 }
 
-function HomeView({ remotePosts = [], feedLoading, feedError, onRetry, onCreatePost, onToggleLike, currentProfile, focusComposer = false }) {
+function HomeView({ remotePosts = [], feedLoading, feedError, onRetry, onCreatePost, onToggleLike, currentProfile, userId, postingStatus, eligibilityLoading, eligibilityError, focusComposer = false }) {
   const [draft, setDraft] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [notice, setNotice] = useState('');
@@ -53,9 +87,9 @@ function HomeView({ remotePosts = [], feedLoading, feedError, onRetry, onCreateP
     setNotice('');
     setNoticeError(false);
     try {
-      await onCreatePost(content);
+      const result = await onCreatePost(content);
       setDraft('');
-      setNotice('Your post was shared.');
+      setNotice(result?.feedRefreshed === false ? 'Your post was published, but the feed could not refresh. Use Refresh to check it.' : 'Your post was published.');
     } catch (error) {
       setNotice(error.message || 'Your post could not be shared.');
       setNoticeError(true);
@@ -81,9 +115,11 @@ function HomeView({ remotePosts = [], feedLoading, feedError, onRetry, onCreateP
 
   return <>
     <div className="view-heading"><div><div className="eyebrow">YOUR OFSOCIO COMMUNITY</div><h1>The near &amp; now</h1><p>Posts from members, loaded from your account.</p></div><span className="live-mark"><i /> LIVE FEED</span></div>
-    <div className="stories-strip"><div className="story create-story" aria-label="Stories are not connected yet"><span className="story-ring add-ring">＋</span><span>Stories soon</span></div></div>
-    <section className="composer panel"><Avatar image={currentProfile?.avatar_display_url} name={currentProfileName(currentProfile)} /><div className="composer-main"><textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="What would you like to share?" aria-label="Write a post" maxLength={5000} autoFocus={focusComposer} /><div className="composer-actions"><div className="composer-tools"><button type="button" disabled title="Photo posts are not connected yet.">▧ <span>Photo</span></button><button type="button" disabled title="Stories are not connected yet.">◷ <span>Story</span></button><button type="button" disabled title="Posts are currently shared publicly.">◈ <span>Audience: Public</span></button></div><button className="button primary small-button" type="button" onClick={() => void publish()} disabled={!draft.trim() || publishing}>{publishing ? 'Sharing…' : 'Share'} <span>↗</span></button></div></div></section>
+    <div className="stories-strip"><div className="story create-story" title="Stories need an approved expiry model and audience-aware media access policy before publishing is enabled." aria-label="Stories are paused pending secure backend support"><span className="story-ring add-ring">＋</span><span>Stories paused</span></div></div>
+    <section className="composer panel"><Avatar image={currentProfile?.avatar_display_url} name={currentProfileName(currentProfile)} /><div className="composer-main"><textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="What would you like to share?" aria-label="Write a post" maxLength={5000} autoFocus={focusComposer} /><div className="composer-actions"><div className="composer-tools"><button type="button" disabled title="Photo posts need an audience-aware upload and media-read policy. The current public bucket cannot enforce post visibility.">▧ <span>Photo</span></button><button type="button" disabled title="Stories require an expiry model and audience-aware media-read policy.">◷ <span>Story</span></button><button type="button" disabled title="Text posts currently publish to the public audience.">◈ <span>Audience: Public</span></button></div><button className="button primary small-button" type="button" onClick={() => void publish()} disabled={!draft.trim() || publishing || postingStatus !== 'eligible' || eligibilityLoading || Boolean(eligibilityError)} title={postingStatus !== 'eligible' ? 'Posting is disabled until account eligibility is confirmed.' : undefined}>{publishing ? 'Publishing…' : 'Publish'} <span>↗</span></button></div><p className="composer-note">Photo and Story publishing are paused until audience-safe media access is available.</p></div></section>
+    {eligibilityError ? <div className="business-feedback error" role="alert">Posting eligibility could not be checked. Publishing is paused for safety.</div> : !eligibilityLoading && postingStatus !== 'eligible' && <div className="business-feedback" role="status">Posting is paused until Ofsocio confirms this account is eligible. Current status: {postingStatus === 'not_started' ? 'not started' : postingStatus}. The verification service is not connected yet.</div>}
     {notice && <p className={noticeError ? 'profile-error' : 'profile-save-message'} role="status" aria-live="polite">{notice}</p>}
+    <MemberSuggestions userId={userId}/>
     <div className="feed-toolbar"><div><span className="eyebrow">YOUR FEED</span><h2>Published posts</h2></div><button type="button" className="quiet-button" disabled title="Feed sorting is not connected yet.">For you <span>⌄</span></button></div>
     {feedError && <div className="business-feedback error" role="alert">{feedError} <button className="text-link" type="button" onClick={() => void onRetry()}>Retry</button></div>}
     {feedLoading ? <div className="business-state panel" role="status">Loading your feed…</div>
@@ -95,16 +131,16 @@ function HomeView({ remotePosts = [], feedLoading, feedError, onRetry, onCreateP
           <div className="post-reactions"><span className="reaction-stack"><i>♥</i></span><span>{post.appreciation_count || 0} appreciations</span><span className="reply-count">{post.reply_count || 0} replies</span></div>
           <div className="post-actions"><button type="button" className={post.appreciated_by_me ? 'is-liked' : ''} onClick={() => void appreciate(post.id)} disabled={liking === post.id}><span>♡</span>{liking === post.id ? 'Saving…' : 'Appreciate'}</button><button type="button" disabled title="Replies are not connected yet."><span>◯</span> Reply</button><button type="button" disabled title="Sharing is not connected yet."><span>↗</span> Share</button><button type="button" className="save-action" disabled title="Saved posts are not connected yet."><span>◇</span> Save</button></div>
         </article>;
-      })}</div> : <div className="business-state panel">No published posts are available yet. Your posts will appear here after you share them.</div>}
+      })}</div> : <div className="business-state panel">{postingStatus && postingStatus !== 'eligible' ? 'No posts are available to this account until eligibility is confirmed.' : 'No published posts are available yet. Text posts will appear here after they are saved successfully.'}</div>}
   </>;
 }
 
 function MessagesView() {
-  return <><div className="view-heading"><div><div className="eyebrow">PRIVATE BY DESIGN</div><h1>Messages</h1><p>Messaging is not connected to the backend yet.</p></div><IconButton label="New message">＋</IconButton></div><div className="business-state panel">Your inbox will show real conversations when messaging is connected. No sample messages are displayed.</div></>;
+  return <><div className="view-heading"><div><div className="eyebrow">PRIVATE BY DESIGN</div><h1>Messages</h1><p>Conversations can be read and existing members can send messages. Creating a new conversation is not enabled.</p></div><IconButton label="New message">＋</IconButton></div><div className="business-state panel">The database has authenticated participant read/send policies, but no safe conversation-creation path or inbox UI is implemented. This screen does not show sample conversations.</div></>;
 }
 
 function ReelsView() {
-  return <><div className="view-heading"><div><div className="eyebrow">SHORT STORIES, FULL FEELING</div><h1>Reels</h1><p>Reels are not connected to the backend yet.</p></div><button className="button outline" type="button" disabled title="Reel filters are not connected yet.">Following <span>⌄</span></button></div><div className="business-state panel">Published reels will appear here when the reels feature is connected.</div></>;
+  return <><div className="view-heading"><div><div className="eyebrow">SHORT STORIES, FULL FEELING</div><h1>Reels</h1><p>Video publishing is unavailable until media records and audience checks are in place.</p></div><button className="button outline" type="button" disabled title="No reels schema or playback service is available yet.">Following <span>⌄</span></button></div><div className="business-state panel">The database has no reels table. The existing public media bucket does not enforce post audience rules, so video upload and playback need a reviewed private-media access design before they can be enabled.</div></>;
 }
 
 
@@ -155,7 +191,7 @@ function ApprovalView({ preview, applications = [], onReview }) {
 
 function SupportView({ faqOnly = false }) {
   const faqs = [
-    ['How do I make my profile private?', 'Privacy controls are not connected yet. Check this page again after account privacy settings are implemented.'],
+    ['How do I make my profile private?', 'Your current visibility appears in Privacy Centre. Changing it is paused because the development database has not granted authenticated updates to that setting.'],
     ['How does identity verification work?', 'Verification is not connected yet. Ofsocio will explain the verified provider and data handling before enabling submissions.'],
     ['How do I report a suspicious account?', 'Reporting tools are not connected yet. Please do not treat this prototype as a reporting channel.']
   ];
@@ -234,7 +270,7 @@ function ProfileView({ profile, loading, error, onSave, onUploadAvatar, onRetry 
   </label>;
 
   return <><div className="profile-cover"><div className="cover-lines"/><button className="profile-edit" type="button" onClick={() => { setMessage(''); setMessageError(false); setEditing((value) => !value); }} disabled={loading || !profile}>{editing ? 'Cancel editing' : 'Edit profile ↗'}</button></div>
-    <section className="profile-summary panel"><div className="profile-avatar-control"><Avatar image={avatar} name={displayName} size="profile"/><label className="profile-photo-upload">{photoUploading ? 'Uploading…' : 'Change photo'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={changePhoto} disabled={loading || photoUploading || !profile} aria-label="Upload a profile photo"/></label></div><div className="profile-details"><div className="profile-name-row"><div><h1>{displayName}</h1><span>{profile?.username ? `@${profile.username}` : 'Choose a username'}{profile?.country_code ? ` · ${profile.country_code.trim()}` : ''}</span></div><span className="profile-schema-note">Profile privacy settings are not connected</span></div><p>{profile?.bio || 'Add a short introduction to tell your circles about yourself.'}</p><div className="profile-stats"><span>{loading ? 'Loading profile…' : 'Profile details are synced to your account'}</span></div></div></section>
+    <section className="profile-summary panel"><div className="profile-avatar-control"><Avatar image={avatar} name={displayName} size="profile"/><label className="profile-photo-upload">{photoUploading ? 'Uploading…' : 'Change photo'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={changePhoto} disabled={loading || photoUploading || !profile} aria-label="Upload a profile photo"/></label></div><div className="profile-details"><div className="profile-name-row"><div><h1>{displayName}</h1><span>{profile?.username ? `@${profile.username}` : 'Choose a username'}{profile?.country_code ? ` · ${profile.country_code.trim()}` : ''}</span></div><span className="profile-schema-note">{profile?.is_private ? "Private account" : "Public account"}</span></div><p>{profile?.bio || 'Add a short introduction to tell your circles about yourself.'}</p><div className="profile-stats"><span>{loading ? 'Loading profile…' : 'Profile details are synced to your account'}</span></div></div></section>
     {editing && draft && <form className="profile-editor panel" onSubmit={submit}>
       <div className="profile-editor-heading"><div><span className="eyebrow">YOUR ACCOUNT DETAILS</span><h2>Edit profile</h2><p>Changes save to your Ofsocio profile.</p></div></div>
       <div className="profile-editor-grid">{field('Display name', 'display_name', { maxLength: 80, required: true })}{field('Username', 'username', { maxLength: 30, required: true, pattern: '[A-Za-z0-9_.]{3,30}', title: 'Use 3–30 letters, numbers, periods, or underscores.' })}{field('Country code', 'country_code', { maxLength: 2, pattern: '[A-Za-z]{2}', title: 'Enter a two-letter country code.' })}{field('Preferred language', 'preferred_language', { maxLength: 10 })}{field('Preferred currency', 'preferred_currency', { maxLength: 3, pattern: '[A-Za-z]{3}', title: 'Enter a three-letter currency code.' })}{field('Timezone', 'timezone', { maxLength: 64 })}{field('Bio', 'bio', { multiline: true, maxLength: 280 })}</div>
@@ -245,7 +281,7 @@ function ProfileView({ profile, loading, error, onSave, onUploadAvatar, onRetry 
 
     <div className="profile-tabs">{['Posts', 'Stories', 'About', 'Friends'].map((item) => <button type="button" className={tab === item ? 'active' : ''} onClick={() => setTab(item)} key={item} disabled={item !== 'About'} title={item !== 'About' ? `${item} are not connected yet.` : undefined}>{item}</button>)}</div><div className="profile-content panel"><span className="eyebrow">{tab.toUpperCase()}</span><h2>Your profile details</h2><p>Your editable profile details are shown above. Posts, stories, and circle activity are not connected yet.</p></div></>;
 }
-function CentreView({ privacy = false, isPrivate, setIsPrivate }) {
+function CentreView({ privacy = false, isPrivate = false }) {
   const [settings, setSettings] = useState({ twoFactor: true, loginAlerts: true, messageRequests: false, activityStatus: false, personalizedDiscovery: true });
   const groups = privacy ? [
     { title: 'Account visibility', detail: isPrivate ? 'Only approved followers can view protected posts.' : 'Anyone can discover your public posts.', key: 'privateAccount' },
@@ -258,7 +294,7 @@ function CentreView({ privacy = false, isPrivate, setIsPrivate }) {
     { title: 'Active sessions', detail: 'Review devices signed in to your account.', key: 'sessions', value: '2 devices' },
     { title: 'Connected apps', detail: 'Review services with account access.', key: 'apps', value: 'Manage' }
   ];
-  return <><div className="view-heading"><div><div className="eyebrow">{privacy ? 'YOUR DATA, YOUR DECISIONS' : 'A QUIETER KIND OF CONFIDENCE'}</div><h1>{privacy ? 'Privacy Centre' : 'Security Centre'}</h1><p>{privacy ? 'Understand and shape how Ofsocio uses your information.' : 'A clear view of your account protection and recent activity.'}</p></div></div><div className="centre-layout"><section className="settings-list panel">{groups.map((item) => <div className="setting-row" key={item.key}><div className="setting-icon">{privacy ? '◈' : '⌑'}</div><div className="setting-description"><strong>{item.title}</strong><span>{item.detail}</span></div>{item.key === 'data' || item.key === 'sessions' || item.key === 'apps' ? <button className="text-link" type="button" disabled title={`${item.title} is not connected yet.`}>{item.value} ↗</button> : item.key === 'privateAccount' ? <button className={`switch ${isPrivate ? 'enabled' : ''}`} role="switch" aria-checked={isPrivate} aria-label={item.title} onClick={() => setIsPrivate?.(!isPrivate)} disabled={!setIsPrivate} title="Account privacy settings are not connected yet."><i /></button> : <button className={`switch ${settings[item.key] ? 'enabled' : ''}`} role="switch" aria-checked={settings[item.key]} aria-label={item.title} onClick={() => setSettings({ ...settings, [item.key]: !settings[item.key] })} disabled title="This security setting is not connected yet."><i /></button>}</div>)}</section><aside className="security-card panel"><div className="security-emblem">{privacy ? '◈' : '✦'}</div><span className="eyebrow">{privacy ? 'PRIVACY SNAPSHOT' : 'ACCOUNT HEALTH'}</span><h2>{privacy ? 'You’re in control.' : 'Your account is in good shape.'}</h2><p>{privacy ? 'Review visibility and data choices at any time. Changes should be clear, reversible and respected.' : 'Security settings are a visual preview and are not connected or enforced.'}</p><button className="text-link" type="button" disabled title="This link is not available yet.">{privacy ? 'Read privacy notice' : 'Review recent activity'} ↗</button></aside></div><p className="disclaimer">Controls shown here are prototype interactions. Production settings must be enforced by authenticated server policies.</p></>;
+  return <><div className="view-heading"><div><div className="eyebrow">{privacy ? 'YOUR DATA, YOUR DECISIONS' : 'A QUIETER KIND OF CONFIDENCE'}</div><h1>{privacy ? 'Privacy Centre' : 'Security Centre'}</h1><p>{privacy ? 'Understand and shape how Ofsocio uses your information.' : 'A clear view of your account protection and recent activity.'}</p></div></div><div className="centre-layout"><section className="settings-list panel">{groups.map((item) => <div className="setting-row" key={item.key}><div className="setting-icon">{privacy ? '◈' : '⌑'}</div><div className="setting-description"><strong>{item.title}</strong><span>{item.detail}</span></div>{item.key === 'data' || item.key === 'sessions' || item.key === 'apps' ? <button className="text-link" type="button" disabled title={`${item.title} is not connected yet.`}>{item.value} ↗</button> : item.key === 'privateAccount' ? <button className={`switch ${isPrivate ? 'enabled' : ''}`} role="switch" aria-checked={isPrivate} aria-label={item.title} disabled title="Read only: the development database does not grant authenticated updates to profiles.is_private yet."><i /></button> : <button className={`switch ${settings[item.key] ? 'enabled' : ''}`} role="switch" aria-checked={settings[item.key]} aria-label={item.title} onClick={() => setSettings({ ...settings, [item.key]: !settings[item.key] })} disabled title="This security setting is not connected yet."><i /></button>}</div>)}</section><aside className="security-card panel"><div className="security-emblem">{privacy ? '◈' : '✦'}</div><span className="eyebrow">{privacy ? 'PRIVACY SNAPSHOT' : 'ACCOUNT HEALTH'}</span><h2>{privacy ? 'Visibility status' : 'Account health'}</h2><p>{privacy ? 'Your current account visibility is shown on your profile. Changing it is paused until the database update grant is reconciled.' : 'Security settings remain a visual preview and are not connected to account security services.'}</p><button className="text-link" type="button" disabled title="This link is not available yet.">{privacy ? 'Read privacy notice' : 'Review recent activity'} ↗</button></aside></div><p className="disclaimer">{privacy ? "Account visibility is read only until the missing database update grant is reviewed and applied." : "Security controls remain previews and are not connected to account security services."}</p></>;
 }
 
 function Sidebar({ view, setView, onSignOut, preview, exitLabel, staffAccess, currentProfile }) {
@@ -266,12 +302,11 @@ function Sidebar({ view, setView, onSignOut, preview, exitLabel, staffAccess, cu
 }
 
 function RightRail({ currentProfile }) {
-  return <aside className="right-rail"><div className="rail-block profile-nudge"><div className="rail-heading"><span className="eyebrow">YOUR SPACE</span><button type="button" className="text-link" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'profile' }))}>Edit</button></div><div className="mini-profile"><Avatar image={currentProfileAvatar(currentProfile)} name={currentProfileName(currentProfile)} size="large"/><div><strong>{currentProfileName(currentProfile)}</strong><span>{currentProfile?.country_code?.trim() || 'Your profile'}</span></div></div><div className="profile-progress"><div><span>Profile</span><strong>Saved</strong></div><div className="progress-track"><i/></div><small>Your profile details are stored in your account.</small></div></div><div className="rail-block"><div className="rail-heading"><div><span className="eyebrow">GOOD PEOPLE</span><h3>Suggested for you</h3></div></div><div className="business-state">Member suggestions are not connected yet.</div></div><footer className="rail-footer">About · Community · Privacy · Terms<br/>© 2026 Ofsocio Social</footer></aside>;
+  return <aside className="right-rail"><div className="rail-block profile-nudge"><div className="rail-heading"><span className="eyebrow">YOUR SPACE</span><button type="button" className="text-link" onClick={() => window.dispatchEvent(new CustomEvent('ofsocio:navigate', { detail: 'profile' }))}>Edit</button></div><div className="mini-profile"><Avatar image={currentProfileAvatar(currentProfile)} name={currentProfileName(currentProfile)} size="large"/><div><strong>{currentProfileName(currentProfile)}</strong><span>{currentProfile?.country_code?.trim() || 'Your profile'}</span></div></div><div className="profile-progress"><div><span>Profile</span><strong>Saved</strong></div><div className="progress-track"><i/></div><small>Your profile details are stored in your account.</small></div></div><footer className="rail-footer">About · Community · Privacy · Terms<br/>© 2026 Ofsocio Social</footer></aside>;
 }
 
 export default function SocialShell({ preview, onExit, accessToken, exitLabel, userId }) {
   const [view, setView] = useState('home');
-  const [isPrivate, setIsPrivate] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [search, setSearch] = useState('');
   const [remoteProfile, setRemoteProfile] = useState(null);
@@ -282,6 +317,9 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel, u
   const [remotePosts, setRemotePosts] = useState([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState('');
+  const [postingStatus, setPostingStatus] = useState(null);
+  const [eligibilityLoading, setEligibilityLoading] = useState(true);
+  const [eligibilityError, setEligibilityError] = useState('');
   const [membershipCatalog, setMembershipCatalog] = useState(null);
   const [kycApplications, setKycApplications] = useState([]);
   const [capabilities, setCapabilities] = useState([]);
@@ -333,14 +371,16 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel, u
       setRemotePosts([]);
       setFeedError("Sign in to see your feed.");
       setFeedLoading(false);
-      return;
+      return false;
     }
     setFeedLoading(true);
     setFeedError("");
     try {
       setRemotePosts(await listFeedPosts(userId));
+      return true;
     } catch (error) {
       setFeedError(error.message || "Your feed could not be loaded.");
+      return false;
     } finally {
       setFeedLoading(false);
     }
@@ -348,9 +388,27 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel, u
 
   useEffect(() => { void refreshFeed(); }, [userId]);
 
+  useEffect(() => {
+    if (!userId) {
+      setPostingStatus(null);
+      setEligibilityLoading(false);
+      setEligibilityError('');
+      return undefined;
+    }
+    let active = true;
+    setEligibilityLoading(true);
+    setEligibilityError('');
+    getOwnPostingEligibility(userId)
+      .then((status) => { if (active) setPostingStatus(status); })
+      .catch((error) => { if (active) setEligibilityError(error.message || 'Posting eligibility could not be checked.'); })
+      .finally(() => { if (active) setEligibilityLoading(false); });
+    return () => { active = false; };
+  }, [userId]);
+
   async function publishPost(body) {
-    await createFeedPost(userId, body);
-    await refreshFeed();
+    const post = await createFeedPost(userId, body);
+    const feedRefreshed = await refreshFeed();
+    return { post, feedRefreshed };
   }
 
   async function appreciatePost(postId) {
@@ -462,7 +520,7 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel, u
     <div className="app-body"><header className="topbar"><button className="mobile-brand" onClick={() => navigate('home')} type="button">OFSOCIO</button><div className="global-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') navigate('friends'); }} placeholder="Search people" aria-label="Search people"/><kbd>↵</kbd></div><div className="top-actions"><button className="top-create" onClick={() => navigate('create')} type="button"><span>＋</span> Create</button><IconButton label="Notifications" className="notification-button">◌<i/></IconButton><button className="top-avatar" onClick={() => navigate('profile')} type="button"><Avatar image={currentProfileAvatar(accountProfile)} name={currentProfileName(accountProfile)}/></button></div></header>
       {!preview && apiNotice && <div className="backend-notice" role="status">Backend notice: {apiNotice}</div>}
       <div className="workspace"><main className="main-column" aria-label={titles[view]}>
-        {view === 'home' && <HomeView remotePosts={remotePosts} feedLoading={feedLoading} feedError={feedError} onRetry={refreshFeed} onCreatePost={publishPost} onToggleLike={appreciatePost} currentProfile={accountProfile}/>}
+        {view === 'home' && <HomeView remotePosts={remotePosts} feedLoading={feedLoading} feedError={feedError} onRetry={refreshFeed} onCreatePost={publishPost} onToggleLike={appreciatePost} currentProfile={accountProfile} userId={userId} postingStatus={postingStatus} eligibilityLoading={eligibilityLoading} eligibilityError={eligibilityError}/>}
         {view === 'friends' && <CirclesView userId={userId} search={search} onSearchChange={setSearch}/>}
         {view === 'messages' && <MessagesView/>}
         {view === 'groups' && <GroupsView userId={userId}/>}
@@ -475,8 +533,8 @@ export default function SocialShell({ preview, onExit, accessToken, exitLabel, u
         {view === 'faq' && <SupportView faqOnly/>}
         {view === 'profile' && <ProfileView profile={accountProfile} loading={profileLoading} error={profileError} onRetry={retryProfile} onSave={saveProfile} onUploadAvatar={(file) => uploadOwnAvatar(userId, file).then((updated) => { setAccountProfile(updated); return updated; })}/>}
         {view === 'security' && <CentreView/>}
-        {view === 'privacy' && <CentreView privacy isPrivate={isPrivate}/>}
-        {view === 'create' && <HomeView remotePosts={remotePosts} feedLoading={feedLoading} feedError={feedError} onRetry={refreshFeed} onCreatePost={publishPost} onToggleLike={appreciatePost} currentProfile={accountProfile} focusComposer/>}
+        {view === 'privacy' && <CentreView privacy isPrivate={Boolean(accountProfile?.is_private)}/>}
+        {view === 'create' && <HomeView remotePosts={remotePosts} feedLoading={feedLoading} feedError={feedError} onRetry={refreshFeed} onCreatePost={publishPost} onToggleLike={appreciatePost} currentProfile={accountProfile} userId={userId} postingStatus={postingStatus} eligibilityLoading={eligibilityLoading} eligibilityError={eligibilityError} focusComposer/>}
       </main><RightRail currentProfile={accountProfile}/></div>
       <nav className="mobile-nav" aria-label="Primary navigation">{mobileItems.map(([id, icon, label]) => <button className={view === id ? 'active' : ''} key={id} type="button" onClick={() => navigate(id)}><span>{icon}</span>{label}</button>)}</nav>
       <button className="mobile-more" onClick={() => setMobileMenu(!mobileMenu)} type="button" aria-label="More sections">{mobileMenu ? '×' : '···'}</button>
