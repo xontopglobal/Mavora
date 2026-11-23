@@ -3,12 +3,15 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { createSupabaseStaffData } from './staffData.js';
+import { registerStaffRoutes } from './staffRoutes.js';
 
 const app = express();
 const origins = (process.env.CLIENT_ORIGINS || '').split(',').map(x => x.trim()).filter(Boolean);
+const allowedOrigins = origins.length ? origins : process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173', 'http://localhost:8081'];
 app.use(helmet());
 app.use(cors({ origin(origin, callback) {
-  if (!origin || origins.length === 0 || origins.includes(origin)) return callback(null, true);
+  if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
   return callback(new Error('Origin not allowed by CORS'));
 }}));
 app.use(express.json({ limit: '1mb' }));
@@ -28,6 +31,13 @@ app.post('/api/webhooks/flutterwave', (req, res) => {
   }
   return res.status(202).json({ received: true, processed: false, note: 'Transaction verification and idempotent processing are not implemented yet' });
 });
+
+const staffData = createSupabaseStaffData({
+  url: process.env.SUPABASE_URL,
+  anonKey: process.env.SUPABASE_ANON_KEY,
+  serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY
+});
+registerStaffRoutes(app, staffData);
 
 const port = Number(process.env.PORT || 8787);
 app.listen(port, () => console.log(`Mavora API listening on ${port}`));

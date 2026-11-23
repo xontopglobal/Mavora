@@ -7,6 +7,9 @@ import SocialShell from './SocialShell';
 
 function App() {
   const [session, setSession] = useState(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState('');
+  const [retrySession, setRetrySession] = useState(0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState('Sign in');
@@ -17,34 +20,32 @@ function App() {
 
   useEffect(() => {
     if (!supabase) {
-      setMessage(
-        'Supabase is not configured. Check apps/web/.env.'
-      );
-      return;
+      setConnectionError('Supabase is not configured for this deployment. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in the deployment environment, then rebuild.');
+      setSessionLoading(false);
+      return undefined;
     }
 
     let mounted = true;
-
     async function loadSession() {
-      const { data, error } = await supabase.auth.getSession();
-
-      if (!mounted) return;
-
-      if (error) {
-        setMessage(error.message);
-        return;
+      setSessionLoading(true);
+      setConnectionError('');
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (mounted) setSession(data.session);
+      } catch (error) {
+        if (mounted) setConnectionError(error.message || 'Ofsocio could not reach Supabase. Check the connection and retry.');
+      } finally {
+        if (mounted) setSessionLoading(false);
       }
-
-      setSession(data.session);
     }
 
-    loadSession();
-
-    const {
-      data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    void loadSession();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (mounted) {
         setSession(newSession);
+        setConnectionError('');
+        setSessionLoading(false);
       }
     });
 
@@ -52,7 +53,7 @@ function App() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [retrySession]);
 
   async function submit(e) {
     e.preventDefault();
@@ -197,6 +198,14 @@ function App() {
     setPassword('');
   }
 
+  if (sessionLoading) {
+    return <main className="auth"><section className="card"><div className="brand">OFSOCIO</div><p className="status" role="status">Checking your Ofsocio session…</p></section></main>;
+  }
+
+  if (connectionError) {
+    return <main className="auth"><section className="card"><div className="brand">OFSOCIO</div><h1>Connection unavailable</h1><p className="status" role="alert">{connectionError}</p><button type="button" onClick={() => setRetrySession((value) => value + 1)}>Retry connection</button></section></main>;
+  }
+
   if (!session) {
     return (
       <main className="auth">
@@ -272,7 +281,8 @@ function App() {
 
   return (
     <SocialShell
-      preview
+      userId={session.user.id}
+      accessToken={session.access_token}
       onExit={signOut}
       exitLabel="Sign out"
     />
