@@ -2,10 +2,11 @@ import { supabase } from "./supabase";
 import { avatarExtension } from "./avatarValidation";
 import { ensureProfileRow } from "./profileBootstrap";
 import { uploadAvatarAndSetPointer } from "./avatarUploadFlow";
+import { normalizeCountryRegionCode } from "./profileValidation";
 
 const AVATAR_BUCKET = "avatars";
 const SIGNED_AVATAR_TTL_SECONDS = 60 * 60;
-const PROFILE_COLUMNS = "id, username, display_name, bio, country_code, preferred_language, preferred_currency, timezone, avatar_url, updated_at";
+const PROFILE_COLUMNS = "id, username, display_name, bio, country_code, preferred_language, preferred_currency, timezone, avatar_url, is_private, follower_list_visibility, updated_at";
 
 async function requireCurrentUser(expectedUserId) {
   if (!supabase) throw new Error("Supabase is not configured.");
@@ -72,7 +73,7 @@ export async function saveOwnProfile(userId, values) {
     username: values.username.trim().toLowerCase(),
     display_name: values.display_name.trim(),
     bio: values.bio.trim(),
-    country_code: values.country_code.trim().toUpperCase() || null,
+    country_code: normalizeCountryRegionCode(values.country_code),
     preferred_language: values.preferred_language.trim() || "en",
     preferred_currency: values.preferred_currency.trim().toUpperCase() || null,
     timezone: values.timezone.trim() || null
@@ -87,6 +88,22 @@ export async function saveOwnProfile(userId, values) {
     if (error.code === "23505") throw new Error("That username is already in use.");
     throw error;
   }
+  return withAvatarDisplayUrl(data, user.id);
+}
+
+export async function saveOwnPrivacy(userId, values) {
+  const user = await requireCurrentUser(userId);
+  if (typeof values?.is_private !== "boolean") throw new Error("Choose whether your profile is public or private.");
+  const followerListVisibility = values.follower_list_visibility;
+  if (!["public", "followers", "friends", "only_me"].includes(followerListVisibility)) {
+    throw new Error("Choose who can see your follower list.");
+  }
+  const { data, error } = await supabase.from("profiles")
+    .update({ is_private: values.is_private, follower_list_visibility: followerListVisibility })
+    .eq("id", user.id)
+    .select(PROFILE_COLUMNS)
+    .single();
+  if (error) throw error;
   return withAvatarDisplayUrl(data, user.id);
 }
 

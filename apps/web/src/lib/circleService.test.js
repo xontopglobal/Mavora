@@ -12,6 +12,7 @@ function fakeClient({ rpcResults = {}, tableResults = {} } = {}) {
     return Array.isArray(results) ? results[callIndex] || { data: [], error: null } : results || { data: [], error: null };
   };
   const client = {
+    supabaseUrl: "https://kpgkamroekhhqpzmsfsf.supabase.co",
     auth: { getUser: async () => ({ data: { user: { id: "auth-user" } }, error: null }) },
     rpc: async (name, args) => {
       calls.push({ type: "rpc", name, args });
@@ -97,6 +98,20 @@ test("incoming and outgoing request state is loaded from the authenticated backe
   assert.equal(state.followers[0].profile.username, "follower");
   assert.equal(state.incomingRequests[0].request_id, "incoming-1");
   assert.equal(state.outgoingRequests[0].request_id, "outgoing-1");
+});
+
+test("reports the configured Supabase project when PostgREST cannot resolve the follow requests RPC", async () => {
+  const { client } = fakeClient({ rpcResults: {
+    get_my_follow_requests: {
+      data: null,
+      error: { code: "PGRST202", message: "Could not find the function public.get_my_follow_requests without parameters in the schema cache" }
+    }
+  } });
+
+  await assert.rejects(
+    createCircleService(client).loadState("auth-user"),
+    /project kpgkamroekhhqpzmsfsf.*VITE_SUPABASE_URL.*PostgREST schema cache/i
+  );
 });
 
 test("rejects unsupported decisions before contacting the response RPC", async () => {

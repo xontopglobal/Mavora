@@ -1,0 +1,42 @@
+/* Readability floor for interactive product screens. */
+.ofsocio-app .main-column{font-size:16px}
+.ofsocio-app .main-column p:not(.eyebrow),
+.ofsocio-app .main-column li,
+.ofsocio-app .main-column .setting-description span,
+.ofsocio-app .main-column .post-by>span,
+.ofsocio-app .main-column small{font-size:15px;line-height:1.55}
+.ofsocio-app .main-column .eyebrow{font-size:12px}
+.ofsocio-app .main-column .button,
+.ofsocio-app .main-column .quiet-button,
+.ofsocio-app .main-column .text-link,
+.ofsocio-app .main-column .business-danger{min-height:44px;font-size:16px}
+.ofsocio-app .main-column input,
+.ofsocio-app .main-column textarea,
+.ofsocio-app .main-column select{font-size:16px}
+.ofsocio-app .setting-unavailable{color:var(--muted);font-size:14px}
+
+@media(max-width:620px){
+  .ofsocio-app .workspace{padding-inline:12px}
+  .ofsocio-app .view-heading{align-items:flex-start}
+  .ofsocio-app .view-heading h1{font-size:26px;line-height:1.2}
+  .ofsocio-app .view-heading p{font-size:15px;line-height:1.5}
+  .ofsocio-app .global-search input{font-size:16px}
+  .ofsocio-app .top-create{font-size:16px}
+  .ofsocio-app .mobile-nav button{font-size:13px;min-height:56px}
+  .ofsocio-app .composer{align-items:flex-start;padding:15px}
+  .ofsocio-app .composer textarea{min-height:76px;font-size:16px;line-height:1.55}
+  .ofsocio-app .composer-tools button{min-height:42px;font-size:15px}
+  .ofsocio-app .post-actions{flex-wrap:wrap;justify-content:space-between;gap:6px 10px}
+  .ofsocio-app .post-actions button{min-height:42px;font-size:14px}
+  .ofsocio-app .stories-empty p{font-size:15px;line-height:1.55}
+  .ofsocio-app .business-record>p,
+  .ofsocio-app .business-catalog-row p,
+  .ofsocio-app .profile-details p{font-size:15px;line-height:1.55}
+}
+
+@media(max-width:380px){
+  .ofsocio-app .mobile-brand{font-size:17px}
+  .ofsocio-app .top-create{font-size:15px;padding-inline:8px}
+  .ofsocio-app .global-search input{font-size:16px}
+  .ofsocio-app .mobile-nav button{font-size:12px}
+}

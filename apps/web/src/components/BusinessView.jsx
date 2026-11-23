@@ -12,8 +12,8 @@ function Status({ value }) {
   return <span className={`business-status ${value === "published" ? "published" : "draft"}`}>{value === "published" ? "Published" : value === "archived" ? "Archived" : "Draft"}</span>;
 }
 
-function Field({ label, name, value, onChange, multiline = false, type = "text", required = false, maxLength }) {
-  const common = { id: name, name, value: value ?? "", onChange, required, maxLength, autoComplete: "off" };
+function Field({ label, name, value, onChange, multiline = false, type = "text", required = false, maxLength, placeholder, pattern, title, autoCapitalize }) {
+  const common = { id: name, name, value: value ?? "", onChange, required, maxLength, placeholder, pattern, title, autoCapitalize, autoComplete: "off" };
   return <label className="business-field" htmlFor={name}><span>{label}</span>{multiline
     ? <textarea {...common} rows="4" />
     : <input {...common} type={type} />}</label>;
@@ -63,7 +63,8 @@ export default function BusinessView({ userId }) {
   }
 
   function updateField(event) {
-    setForm((current) => ({ ...current, values: { ...current.values, [event.target.name]: event.target.value } }));
+    const value = event.target.name === "country_code" ? event.target.value.toUpperCase() : event.target.value;
+    setForm((current) => ({ ...current, values: { ...current.values, [event.target.name]: value } }));
   }
 
   async function submitForm(event) {
@@ -119,7 +120,7 @@ export default function BusinessView({ userId }) {
         {form.type === "business" ? <>
           <Field label="Business name" name="name" value={values.name} onChange={updateField} required maxLength={80}/>
           <Field label="Website (HTTPS)" name="website_url" value={values.website_url} onChange={updateField} type="url"/>
-          <Field label="Country code" name="country_code" value={values.country_code?.trim?.() || ""} onChange={updateField} maxLength={2}/>
+          <Field label="Country / region code (ISO alpha-2)" name="country_code" value={values.country_code?.trim?.() || ""} onChange={updateField} maxLength={2} pattern="[A-Za-z]{2}" title="Enter a two-letter ISO country code, for example NG or GB." placeholder="e.g. NG" autoCapitalize="characters"/>
           <Field label="Description" name="description" value={values.description} onChange={updateField} multiline maxLength={1000}/>
         </> : form.type === "product" ? <>
           <Field label="Product name" name="title" value={values.title} onChange={updateField} required maxLength={120}/>

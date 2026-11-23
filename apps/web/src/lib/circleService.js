@@ -8,6 +8,23 @@ function unwrap(response) {
   return response?.data;
 }
 
+function describeFollowRequestSchemaError(error, client) {
+  const missingFunction = error?.code === "PGRST202"
+    && /get_my_follow_requests/i.test(`${error.message || ""} ${error.details || ""} ${error.hint || ""}`);
+  if (!missingFunction) return error;
+
+  let projectRef = "the configured project";
+  try {
+    projectRef = new URL(client?.supabaseUrl).hostname.split(".")[0] || projectRef;
+  } catch {
+    // Keep the generic label when a test or custom client has no Supabase URL.
+  }
+  return new Error(
+    `Circles is connected to Supabase project ${projectRef}, but its API schema does not expose get_my_follow_requests(). `
+    + "Check VITE_SUPABASE_URL in the deployment. If it is the intended project, refresh that project's PostgREST schema cache and reload."
+  );
+}
+
 export function createCircleService(client = supabase) {
   async function requireUser(expectedUserId) {
     if (!client) throw new Error("Supabase is not configured.");
@@ -43,7 +60,12 @@ export function createCircleService(client = supabase) {
 
     const following = unwrap(followingResponse) || [];
     const followers = unwrap(followersResponse) || [];
-    const requests = unwrap(requestResponse) || [];
+    let requests;
+    try {
+      requests = unwrap(requestResponse) || [];
+    } catch (error) {
+      throw describeFollowRequestSchemaError(error, client);
+    }
     const profileIds = [...new Set([
       ...following.map((row) => row.followed_id),
       ...followers.map((row) => row.follower_id)

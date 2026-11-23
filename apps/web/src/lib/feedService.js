@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { validatePostBody } from "./feedValidation";
+import { validateCommentBody, validatePostBody } from "./feedValidation";
 
 async function requireUser(expectedUserId) {
   if (!supabase) throw new Error("Supabase is not configured.");
@@ -70,6 +70,37 @@ export async function createFeedPost(userId, value) {
   return data;
 }
 
+export async function editFeedPost(userId, postId, value) {
+  const user = await requireUser(userId);
+  if (!postId) throw new Error("This post is unavailable.");
+  const body = validatePostBody(value);
+  const { data, error } = await supabase
+    .from("posts")
+    .update({ body })
+    .eq("id", postId)
+    .eq("author_id", user.id)
+    .select("id, author_id, body, media_urls, visibility, created_at, updated_at")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("This post could not be edited. It may have been removed or you may not own it.");
+  return data;
+}
+
+export async function deleteFeedPost(userId, postId) {
+  const user = await requireUser(userId);
+  if (!postId) throw new Error("This post is unavailable.");
+  const { data, error } = await supabase
+    .from("posts")
+    .delete()
+    .eq("id", postId)
+    .eq("author_id", user.id)
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("This post could not be deleted. It may have been removed or you may not own it.");
+  return data.id;
+}
+
 export async function togglePostAppreciation(userId, postId) {
   const user = await requireUser(userId);
   const { data: existing, error: readError } = await supabase
@@ -88,4 +119,41 @@ export async function togglePostAppreciation(userId, postId) {
   const { error } = await supabase.from("post_reactions").insert({ post_id: postId, user_id: user.id, reaction: "like" });
   if (error) throw error;
   return true;
+}
+
+export async function listPostComments(userId, postId) {
+  await requireUser(userId);
+  if (!postId) throw new Error("This post is unavailable.");
+  const { data: comments, error } = await supabase
+    .from("comments")
+    .select("id, post_id, author_id, body, created_at")
+    .eq("post_id", postId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  if (!comments?.length) return [];
+
+  const authorIds = [...new Set(comments.map((comment) => comment.author_id))];
+  const { data: profiles, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, username, display_name, avatar_url")
+    .in("id", authorIds);
+  if (profileError) throw profileError;
+  const profileById = new Map((profiles || []).map((profile) => [profile.id, profile]));
+  return comments.map((comment) => ({
+    ...comment,
+    author: profileById.get(comment.author_id) || { username: null, display_name: null, avatar_url: null }
+  }));
+}
+
+export async function createPostComment(userId, postId, value) {
+  const user = await requireUser(userId);
+  if (!postId) throw new Error("This post is unavailable.");
+  const body = validateCommentBody(value);
+  const { data, error } = await supabase
+    .from("comments")
+    .insert({ post_id: postId, author_id: user.id, body })
+    .select("id, post_id, author_id, body, created_at")
+    .single();
+  if (error) throw error;
+  return data;
 }

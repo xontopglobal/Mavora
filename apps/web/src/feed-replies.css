@@ -1,0 +1,27 @@
+.post-replies{display:grid;gap:12px;padding:13px 2px 8px;border-top:1px solid var(--line)}
+.post-replies>p,.reply-empty{margin:0;color:var(--muted);font-size:13px}
+.post-reply{display:flex;align-items:flex-start;gap:9px}
+.post-reply>div{min-width:0;padding:8px 11px;border:1px solid var(--line);border-radius:12px;background:var(--surface-raised)}
+.post-reply strong{font-size:12px}
+.post-reply p{margin:3px 0 0;color:var(--text);font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.reply-form{display:flex;gap:8px;align-items:center}
+.reply-form input{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-raised);color:var(--text);font:inherit;font-size:13px}
+.reply-form input::placeholder{color:var(--muted)}
+.post-menu-wrap{position:relative;margin-left:auto}
+.post-menu-wrap .more-button{min-height:40px;min-width:44px}
+.post-menu{position:absolute;right:0;top:100%;z-index:3;display:grid;min-width:150px;padding:6px;border:1px solid var(--line);border-radius:12px;background:var(--surface-raised);box-shadow:0 12px 30px #0007}
+.post-menu button{min-height:42px;padding:8px 10px;border:0;border-radius:8px;background:transparent;color:var(--text);text-align:left;font:inherit}
+.post-menu button:hover{background:var(--surface-soft)}
+.post-menu .post-delete-action{color:#ff9292}
+.post-edit-form{display:grid;gap:10px;margin:12px 0;padding:13px;border:1px solid var(--line);border-radius:13px;background:var(--surface-raised)}
+.post-edit-form label{font-size:14px;color:var(--muted)}
+.post-edit-form textarea{min-height:100px;padding:11px;border:1px solid var(--line);border-radius:10px;background:#101110;color:var(--text);font:inherit;font-size:16px;resize:vertical}
+.post-edit-form>div{display:flex;justify-content:flex-end;gap:8px}
+.report-dialog-backdrop{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:18px;background:#0009}
+.report-dialog{display:grid;gap:12px;width:min(100%,460px);padding:22px;box-shadow:0 24px 70px #0009}
+.report-dialog h2{margin:0;font-size:22px}
+.report-dialog p{margin:0;color:var(--muted);font-size:15px;line-height:1.5}
+.report-dialog label{font-size:14px}
+.report-dialog select{min-height:48px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-raised);color:var(--text);font:inherit;font-size:16px}
+.report-dialog textarea{min-height:88px;max-height:220px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface-raised);color:var(--text);font:inherit;font-size:16px;line-height:1.5;resize:vertical}
+.report-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
