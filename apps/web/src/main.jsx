@@ -1,51 +1,59 @@
 
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { supabase } from './lib/supabase';
+import { supabase, supabaseConfigStatus } from './lib/supabase';
 import './style.css';
 import SocialShell from './SocialShell';
 
 function App() {
   const [session, setSession] = useState(null);
-  const [sessionLoading, setSessionLoading] = useState(true);
-  const [connectionError, setConnectionError] = useState('');
-  const [retrySession, setRetrySession] = useState(0);
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [authMethod, setAuthMethod] = useState('email');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpPending, setOtpPending] = useState(false);
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState('Sign in');
   const [message, setMessage] = useState(
     'Connect. Share. Discover. Grow.'
   );
   const [loading, setLoading] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
 
   useEffect(() => {
     if (!supabase) {
-      setConnectionError('Supabase is not configured for this deployment. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in the deployment environment, then rebuild.');
-      setSessionLoading(false);
-      return undefined;
+      const reasons = [];
+      if (!supabaseConfigStatus.urlConfigured) reasons.push('Supabase URL is missing');
+      if (!supabaseConfigStatus.keyConfigured) reasons.push('Supabase public/anon key is missing');
+      if (supabaseConfigStatus.urlConfigured && !supabaseConfigStatus.urlValid) reasons.push('Supabase URL must look like https://your-project.supabase.co');
+      setMessage(`Supabase connection is unavailable. ${reasons.join('. ') || 'Check apps/web/.env and restart Vite.'}.`);
+      return;
     }
 
     let mounted = true;
+
     async function loadSession() {
-      setSessionLoading(true);
-      setConnectionError('');
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        if (mounted) setSession(data.session);
-      } catch (error) {
-        if (mounted) setConnectionError(error.message || 'Ofsocio could not reach Supabase. Check the connection and retry.');
-      } finally {
-        if (mounted) setSessionLoading(false);
+      const { data, error } = await supabase.auth.getSession();
+
+      if (!mounted) return;
+
+      if (error) {
+        setMessage(error.message);
+        return;
       }
+
+      setSession(data.session);
     }
 
-    void loadSession();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    loadSession();
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (mounted) {
         setSession(newSession);
-        setConnectionError('');
-        setSessionLoading(false);
+        if (_event === 'PASSWORD_RECOVERY') setRecoveryMode(true);
       }
     });
 
@@ -53,7 +61,7 @@ function App() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [retrySession]);
+  }, []);
 
   async function submit(e) {
     e.preventDefault();
@@ -66,14 +74,14 @@ function App() {
     }
 
     const cleanEmail = email.trim().toLowerCase();
+    const cleanPhone = phone.trim();
 
-    if (!cleanEmail || !password) {
-      setMessage('Please enter your email and password.');
-      return;
-    }
+    if (authMethod === 'email' && !cleanEmail) { setMessage('Please enter your email address.'); return; }
+    if (authMethod === 'phone' && !/^\+[1-9]\d{7,14}$/.test(cleanPhone)) { setMessage('Enter a phone number in international E.164 format, e.g. +2348012345678.'); return; }
+    if (!password) { setMessage('Please enter your password.'); return; }
 
-    if (password.length < 6) {
-      setMessage('Your password must contain at least 6 characters.');
+    if (password.length < 8) {
+      setMessage('Your password must contain at least 8 characters.');
       return;
     }
 
@@ -86,32 +94,19 @@ function App() {
 
     try {
       if (mode === 'Sign up') {
-        const { data, error } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password
-        });
-
-        if (error) throw error;
-
-        if (data.session) {
-          setSession(data.session);
-          setMessage('Your Ofsocio account has been created.');
-        } else {
-          setMessage(
-            'Registration successful! Please check your email and confirm your account before signing in.'
-          );
-        }
+        const result = authMethod === 'phone'
+          ? await supabase.auth.signUp({ phone: cleanPhone, password, options: { data: { display_name: cleanPhone } } })
+          : await supabase.auth.signUp({ email: cleanEmail, password, options: { data: { display_name: cleanEmail.split('@')[0] } } });
+        if (result.error) throw result.error;
+        if (result.data.session) { setSession(result.data.session); setMessage('Your Ofsocio account has been created.'); }
+        else if (authMethod === 'phone') { setOtpPending(true); setMessage('Phone registration started. Enter the SMS verification code below.'); }
+        else { setMessage('Registration successful! Please check your email and confirm your account before signing in.'); }
       } else {
-        const { data, error } =
-          await supabase.auth.signInWithPassword({
-            email: cleanEmail,
-            password
-          });
-
-        if (error) throw error;
-
-        setSession(data.session);
-        setMessage('Welcome back to Ofsocio!');
+        const result = authMethod === 'phone'
+          ? await supabase.auth.signInWithPassword({ phone: cleanPhone, password })
+          : await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+        if (result.error) throw result.error;
+        setSession(result.data.session); setMessage('Welcome back to Ofsocio!');
       }
     } catch (error) {
       console.error('Authentication error:', error);
@@ -132,6 +127,22 @@ function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function requestPhoneOtp() {
+    if (!supabase || !/^\+[1-9]\d{7,14}$/.test(phone.trim())) { setMessage('Enter a phone number in international E.164 format.'); return; }
+    setLoading(true);
+    try { const { error }=await supabase.auth.signInWithOtp({phone:phone.trim()}); if(error)throw error; setOtpPending(true); setMessage('SMS code sent. Enter it below to verify your phone.'); }
+    catch(error){setMessage(error.message||'Could not send SMS code.');}
+    finally{setLoading(false);}
+  }
+
+  async function verifyPhoneOtp() {
+    if (!supabase || !otpCode.trim()) { setMessage('Enter the SMS verification code.'); return; }
+    setLoading(true);
+    try { const {data,error}=await supabase.auth.verifyOtp({phone:phone.trim(),token:otpCode.trim(),type:'sms'}); if(error)throw error; setSession(data.session);setOtpPending(false);setOtpCode('');setMessage('Phone verified. Welcome to Ofsocio!'); }
+    catch(error){setMessage(error.message||'Phone verification failed.');}
+    finally{setLoading(false);}
   }
 
   async function reset() {
@@ -170,6 +181,27 @@ function App() {
     }
   }
 
+  async function updateRecoveredPassword(e) {
+    e.preventDefault();
+    if (newPassword.length < 8) { setMessage('Choose a password with at least 8 characters.'); return; }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setRecoveryMode(false); setNewPassword(''); setMessage('Password updated. You can continue using Ofsocio.');
+    } catch (error) { setMessage(error.message || 'Could not update password.'); }
+    finally { setLoading(false); }
+  }
+
+  async function googleSignIn() {
+    if (!supabase) { setMessage('Supabase connection is unavailable.'); return; }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+      if (error) throw error;
+    } catch (error) { setMessage(error.message || 'Google sign-in could not start.'); setLoading(false); }
+  }
+
   async function signOut() {
     if (!supabase) return;
 
@@ -198,12 +230,8 @@ function App() {
     setPassword('');
   }
 
-  if (sessionLoading) {
-    return <main className="auth"><section className="card"><div className="brand">OFSOCIO</div><p className="status" role="status">Checking your Ofsocio session…</p></section></main>;
-  }
-
-  if (connectionError) {
-    return <main className="auth"><section className="card"><div className="brand">OFSOCIO</div><h1>Connection unavailable</h1><p className="status" role="alert">{connectionError}</p><button type="button" onClick={() => setRetrySession((value) => value + 1)}>Retry connection</button></section></main>;
+  if (recoveryMode) {
+    return <main className="auth"><section className="card"><div className="brand">OFSOCIO</div><h1>Choose a new password</h1><form onSubmit={updateRecoveredPassword}><input type="password" placeholder="New password (8 characters minimum)" value={newPassword} onChange={e=>setNewPassword(e.target.value)} minLength={8} autoComplete="new-password" required/><button type="submit" disabled={loading}>{loading?'Updating…':'Update password'}</button></form><p className="status" role="status">{message}</p></section></main>;
   }
 
   if (!session) {
@@ -219,14 +247,8 @@ function App() {
           <h1>{mode} to Ofsocio</h1>
 
           <form onSubmit={submit}>
-            <input
-              type="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-            />
+            <div className="auth-method-toggle"><button type="button" className={authMethod==='email'?'active':''} onClick={()=>setAuthMethod('email')}>Email</button><button type="button" className={authMethod==='phone'?'active':''} onClick={()=>setAuthMethod('phone')}>Phone</button></div>
+            {authMethod==='email'?<input type="email" placeholder="Email address" value={email} onChange={(e)=>setEmail(e.target.value)} autoComplete="email" required/>:<input type="tel" placeholder="Phone e.g. +2348012345678" value={phone} onChange={(e)=>setPhone(e.target.value)} autoComplete="tel" required/>}
 
             <input
               type="password"
@@ -238,7 +260,7 @@ function App() {
                   ? 'new-password'
                   : 'current-password'
               }
-              minLength={6}
+              minLength={8}
               required
             />
 
@@ -246,15 +268,10 @@ function App() {
               {loading ? 'Please wait...' : mode}
             </button>
           </form>
+          {authMethod==='phone'&&<button type="button" className="text-button" onClick={requestPhoneOtp} disabled={loading}>Sign in / verify with SMS code</button>}
+          {authMethod==='phone'&&otpPending&&<div className="otp-panel"><input inputMode="numeric" placeholder="SMS verification code" value={otpCode} onChange={e=>setOtpCode(e.target.value)} required/><button type="button" onClick={verifyPhoneOtp} disabled={loading}>{loading?'Verifying…':'Verify phone'}</button></div>}
 
-          <button
-            type="button"
-            className="text-button"
-            onClick={reset}
-            disabled={loading}
-          >
-            Forgot password?
-          </button>
+          {authMethod==='email'&&<button type="button" className="text-button" onClick={reset} disabled={loading}>Forgot password?</button>}
 
           <button
             type="button"
@@ -266,6 +283,7 @@ function App() {
               ? 'Create an account'
               : 'Already registered? Sign in'}
           </button>
+          <button type="button" className="text-button" onClick={googleSignIn} disabled={loading}>Continue with Google</button>
 
           <p className="status" role="status" aria-live="polite">
             {message}
@@ -281,7 +299,8 @@ function App() {
 
   return (
     <SocialShell
-      userId={session.user.id}
+      supabase={supabase}
+      currentUser={session.user}
       accessToken={session.access_token}
       onExit={signOut}
       exitLabel="Sign out"
